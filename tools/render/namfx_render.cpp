@@ -16,6 +16,7 @@
 #include "modules/dsp/spring_reverb.h"
 #include "modules/dsp/pitch_shifter.h"
 #include "modules/dsp/octave.h"
+#include "modules/dsp/hall_reverb.h"
 #include "modules/module_registry.h"
 #include "preset/preset_io.h"
 
@@ -254,6 +255,7 @@ int main(int argc, char** argv)
     namfx::registerSpringReverb(*registry);
     namfx::registerPitchShifter(*registry);
     namfx::registerOctave(*registry);
+    namfx::registerHallReverb(*registry);
 
     namfx::preset::LoadReport report;
     namfx::preset::Preset preset = namfx::preset::loadPreset(

@@ -21,6 +21,7 @@ add_library(namfx_core STATIC
     modules/dsp/spring_reverb.cpp
     modules/dsp/pitch_shifter.cpp
     modules/dsp/octave.cpp
+    modules/dsp/hall_reverb.cpp
     preset/preset_model.cpp
     preset/preset_io.cpp
     preset/migration.cpp
