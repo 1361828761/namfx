@@ -19,6 +19,114 @@ namespace {
 constexpr int kSampleRate = 48000;
 constexpr int kChannels = 2;
 
+struct AudioInput {
+    std::vector<float> left;
+    std::vector<float> right;
+};
+
+bool readWav(const std::string& path, AudioInput& input)
+{
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return false;
+    }
+    auto readBytes = [&file](std::size_t count) {
+        std::vector<char> buf(count);
+        file.read(buf.data(), static_cast<std::streamsize>(count));
+        return buf;
+    };
+    auto toU32 = [](const char* p) {
+        return static_cast<std::uint32_t>(static_cast<unsigned char>(p[0])) |
+               (static_cast<std::uint32_t>(static_cast<unsigned char>(p[1])) << 8) |
+               (static_cast<std::uint32_t>(static_cast<unsigned char>(p[2])) << 16) |
+               (static_cast<std::uint32_t>(static_cast<unsigned char>(p[3])) << 24);
+    };
+    auto toU16 = [](const char* p) {
+        return static_cast<std::uint16_t>(static_cast<unsigned char>(p[0])) |
+               (static_cast<std::uint16_t>(static_cast<unsigned char>(p[1])) << 8);
+    };
+
+    const std::vector<char> header = readBytes(12);
+    if (header.size() < 12 || std::memcmp(header.data(), "RIFF", 4) != 0 ||
+        std::memcmp(header.data() + 8, "WAVE", 4) != 0) {
+        return false;
+    }
+
+    int sourceRate = 0;
+    int channels = 0;
+    int format = 0;
+    int bitsPerSample = 0;
+    std::vector<float> samplesL;
+    std::vector<float> samplesR;
+
+    while (file) {
+        const std::vector<char> chunk = readBytes(8);
+        if (chunk.size() < 8) {
+            break;
+        }
+        const std::uint32_t chunkSize = toU32(chunk.data() + 4);
+        if (std::memcmp(chunk.data(), "fmt ", 4) == 0) {
+            const std::vector<char> fmt = readBytes(chunkSize < 16 ? chunkSize : 16);
+            format = toU16(fmt.data());
+            channels = toU16(fmt.data() + 2);
+            sourceRate = static_cast<int>(toU32(fmt.data() + 4));
+            bitsPerSample = toU16(fmt.data() + 14);
+            if (chunkSize > 16) {
+                file.seekg(static_cast<std::streamoff>(chunkSize - 16), std::ios::cur);
+            }
+        } else if (std::memcmp(chunk.data(), "data", 4) == 0) {
+            const std::vector<char> data = readBytes(chunkSize);
+            const std::size_t frames = data.size() / (static_cast<std::size_t>(channels) * (bitsPerSample / 8));
+            samplesL.resize(frames);
+            samplesR.resize(frames);
+            for (std::size_t f = 0; f < frames; ++f) {
+                auto sampleAt = [&](int ch) {
+                    const std::size_t offset = f * static_cast<std::size_t>(channels) * (bitsPerSample / 8) +
+                                               static_cast<std::size_t>(ch) * (bitsPerSample / 8);
+                    if (format == 3 && bitsPerSample == 32) {
+                        float value;
+                        std::memcpy(&value, data.data() + offset, 4);
+                        return value;
+                    }
+                    if (format == 1 && bitsPerSample == 16) {
+                        return static_cast<float>(static_cast<std::int16_t>(toU16(data.data() + offset))) / 32768.0f;
+                    }
+                    return 0.0f;
+                };
+                samplesL[f] = sampleAt(0);
+                samplesR[f] = channels > 1 ? sampleAt(1) : sampleAt(0);
+            }
+            break;
+        } else {
+            file.seekg(static_cast<std::streamoff>(chunkSize + (chunkSize & 1)), std::ios::cur);
+        }
+    }
+
+    if (sourceRate == 0 || samplesL.empty()) {
+        return false;
+    }
+    if (sourceRate == kSampleRate) {
+        input.left = std::move(samplesL);
+        input.right = std::move(samplesR);
+        return true;
+    }
+
+    // linear resample to the engine rate
+    const double ratio = static_cast<double>(sourceRate) / static_cast<double>(kSampleRate);
+    const std::size_t outFrames = static_cast<std::size_t>(static_cast<double>(samplesL.size()) / ratio);
+    input.left.resize(outFrames);
+    input.right.resize(outFrames);
+    for (std::size_t i = 0; i < outFrames; ++i) {
+        const double pos = static_cast<double>(i) * ratio;
+        const std::size_t i0 = static_cast<std::size_t>(pos);
+        const std::size_t i1 = i0 + 1 < samplesL.size() ? i0 + 1 : i0;
+        const double frac = pos - static_cast<double>(i0);
+        input.left[i] = static_cast<float>(samplesL[i0] * (1.0 - frac) + samplesL[i1] * frac);
+        input.right[i] = static_cast<float>(samplesR[i0] * (1.0 - frac) + samplesR[i1] * frac);
+    }
+    return true;
+}
+
 void writeWav(const std::string& path, const std::vector<float>& left, const std::vector<float>& right)
 {
     const std::uint32_t dataSize = static_cast<std::uint32_t>(left.size() * kChannels * 2);
@@ -59,7 +167,7 @@ void writeWav(const std::string& path, const std::vector<float>& left, const std
 
 int usage()
 {
-    std::printf("usage: namfx_render --preset <file.json> [--seconds N] [--freq Hz] [--out out.wav]\n");
+    std::printf("usage: namfx_render --preset <file.json> [--in input.wav] [--seconds N] [--freq Hz] [--out out.wav]\n");
     return 1;
 }
 
@@ -68,6 +176,7 @@ int usage()
 int main(int argc, char** argv)
 {
     std::string presetPath;
+    std::string inPath;
     std::string outPath = "render.wav";
     double seconds = 2.0;
     double freq = 440.0;
@@ -75,6 +184,8 @@ int main(int argc, char** argv)
         const std::string arg = argv[i];
         if (arg == "--preset" && i + 1 < argc) {
             presetPath = argv[++i];
+        } else if (arg == "--in" && i + 1 < argc) {
+            inPath = argv[++i];
         } else if (arg == "--out" && i + 1 < argc) {
             outPath = argv[++i];
         } else if (arg == "--seconds" && i + 1 < argc) {
@@ -116,6 +227,17 @@ int main(int argc, char** argv)
     namfx::audio::Chain chain(preset.chain, registry);
     chain.prepare(kSampleRate, 64);
 
+    AudioInput input;
+    if (!inPath.empty()) {
+        if (!readWav(inPath, input)) {
+            std::printf("error: cannot read wav %s (need 16-bit PCM or float32)\n", inPath.c_str());
+            return 1;
+        }
+        seconds = static_cast<double>(input.left.size()) / kSampleRate;
+        std::printf("using %s: %d samples, %d sec\n", inPath.c_str(),
+                    static_cast<int>(input.left.size()), static_cast<int>(seconds));
+    }
+
     const int totalSamples = static_cast<int>(seconds * kSampleRate);
     std::vector<float> inL(64, 0.0f);
     std::vector<float> inR(64, 0.0f);
@@ -125,11 +247,19 @@ int main(int argc, char** argv)
     constexpr double kTwoPi = 6.28318530717958647692;
     for (int offset = 0; offset < totalSamples; offset += 64) {
         const int count = totalSamples - offset < 64 ? totalSamples - offset : 64;
-        for (int i = 0; i < count; ++i) {
-            inL[static_cast<std::size_t>(i)] =
-                static_cast<float>(std::sin(phase) * 0.5);
-            inR[static_cast<std::size_t>(i)] = 0.0f;
-            phase += kTwoPi * freq / kSampleRate;
+        if (!inPath.empty()) {
+            for (int i = 0; i < count; ++i) {
+                const std::size_t idx = static_cast<std::size_t>(offset + i);
+                inL[static_cast<std::size_t>(i)] = input.left[idx];
+                inR[static_cast<std::size_t>(i)] = input.right[idx];
+            }
+        } else {
+            for (int i = 0; i < count; ++i) {
+                inL[static_cast<std::size_t>(i)] =
+                    static_cast<float>(std::sin(phase) * 0.5);
+                inR[static_cast<std::size_t>(i)] = 0.0f;
+                phase += kTwoPi * freq / kSampleRate;
+            }
         }
         chain.process(inL.data(), inR.data(), outL.data() + offset, outR.data() + offset, count);
     }
