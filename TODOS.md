@@ -43,14 +43,7 @@
   - Depends on: M4
   - Priority: P2
 
-- [ ] **WDF 电路级单块库（TS9/Klon 类）**
-  - What: 白盒电路建模驱动类单块
-  - Why: 用户原始诉求（DSP 复刻单块）；前提评审降级为后置
-  - Pros: 全参数可调单块，不受 NAM 微调限制；不依赖社区捕获质量
-  - Cons: WDF 音质难追平商业 DSP；与社区 NAM 捕获重复；商标需改名
-  - Context: 前提 2 用户选择"通用模块优先，WDF 单块后置"
-  - Depends on: M2 DSP 库框架
-  - Priority: P2
+- [x] **WDF 电路级单块库（TS9/Klon 类）** ✅ 已提前入 M2（v0.8 #110 名单块数字复刻路线：TS808 风格 WDF 先行 → Klon/OCD；命名改名规避商标）
 
 - [ ] **模块第三方扩展接口**
   - What: 开放模块 API 供第三方开发 DSP/IR 模块
