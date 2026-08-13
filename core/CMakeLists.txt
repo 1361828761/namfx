@@ -7,6 +7,7 @@ add_library(namfx_core STATIC
     modules/dsp/gain.cpp
     modules/dsp/tone.cpp
     modules/dsp/ts808.cpp
+    modules/dsp/klon.cpp
     preset/preset_model.cpp
     preset/preset_io.cpp
     preset/migration.cpp

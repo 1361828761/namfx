@@ -24,6 +24,7 @@ add_executable(namfx_tests
     migration_test.cpp
     integration_test.cpp
     ts808_test.cpp
+    klon_test.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)

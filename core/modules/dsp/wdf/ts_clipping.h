@@ -1,52 +1,12 @@
 #pragma once
 
+#include "halfband.h"
+
 #include <chowdsp_wdf/chowdsp_wdf.h>
 
 #include <cmath>
 
 namespace namfx {
-
-// 4th-order Butterworth lowpass (two cascaded biquads), fc = sampleRate / 4
-// in the oversampled domain. Coefficients are fixed: with fc = fs_os / 4 the
-// normalized cutoff is always pi/2, independent of the base sample rate.
-class TsHalfbandLowpass {
-public:
-    void reset()
-    {
-        z1a_ = z2a_ = z1b_ = z2b_ = 0.0f;
-    }
-
-    inline float process(float x)
-    {
-        float y = b0A_ * x + z1a_;
-        z1a_ = b1A_ * x - a1A_ * y + z2a_;
-        z2a_ = b2A_ * x - a2A_ * y;
-
-        y = b0B_ * y + z1b_;
-        z1b_ = b1B_ * y - a1B_ * y + z2b_;
-        z2b_ = b2B_ * y - a2B_ * y;
-        return y;
-    }
-
-private:
-    // Section A: Q = 1.3066, Section B: Q = 0.5412 (4th-order Butterworth split)
-    static constexpr float b0A_ = 0.361607f;
-    static constexpr float b1A_ = 0.723214f;
-    static constexpr float b2A_ = 0.361607f;
-    static constexpr float a1A_ = 0.0f;
-    static constexpr float a2A_ = 0.446437f;
-
-    static constexpr float b0B_ = 0.259884f;
-    static constexpr float b1B_ = 0.519768f;
-    static constexpr float b2B_ = 0.259884f;
-    static constexpr float a1B_ = 0.0f;
-    static constexpr float a2B_ = 0.0395505f;
-
-    float z1a_ = 0.0f;
-    float z2a_ = 0.0f;
-    float z1b_ = 0.0f;
-    float z2b_ = 0.0f;
-};
 
 // TS808 clipping amplifier, modeled as three cascaded WDF sub-networks
 // (Duarte & Chowdhury decomposition, as used by TS-808-Ultra):
@@ -91,17 +51,8 @@ public:
 
         const float up0 = upFilter_.process(x) * 2.0f;
         const float up1 = upFilter_.process(0.0f) * 2.0f;
-        const float clipped0 = wdfC_.processSample(wdfB_.processSample(wdfA_.processSample(up0)));
-        const float clipped1 = wdfC_.processSample(wdfB_.processSample(wdfA_.processSample(up1)));
-        const float down0 = downFilter_.process(clipped0);
-        const float down1 = downFilter_.process(clipped1);
-
-        if (sampleIndex_) {
-            sampleIndex_ = 0;
-            return down1;
-        }
-        sampleIndex_ = 1;
-        return down0;
+        downFilter_.process(wdfC_.processSample(wdfB_.processSample(wdfA_.processSample(up0))));
+        return downFilter_.process(wdfC_.processSample(wdfB_.processSample(wdfA_.processSample(up1))));
     }
 
 private:
@@ -201,14 +152,13 @@ private:
     WdfA wdfA_;
     WdfB wdfB_;
     WdfC wdfC_;
-    TsHalfbandLowpass upFilter_;
-    TsHalfbandLowpass downFilter_;
+    HalfbandLowpass upFilter_;
+    HalfbandLowpass downFilter_;
 
     float osRate_ = 96000.0f;
     float driveSmoothK_ = 0.0f;
     float driveR_ = 0.0f;
     float driveTarget_ = 0.0f;
-    int sampleIndex_ = 0;
 };
 
 } // namespace namfx
