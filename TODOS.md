@@ -86,11 +86,11 @@
 - [x] **moddsp/modep 生态调研（M0，半天）** ✅ 已完成（2026-08-13，`docs/research/modep.md`）：结论 partial——不借道（GPL 传染 + JACK 多进程栈破坏 5ms/零依赖/双端共享引擎三条红线）；借鉴 10 条（mod-host 命令总线、mod-ui 连接状态机、pi-stomp 三端 UX、Guitarix 算法干净室参照）；建议 M4 bake-off 顺路跑 MODEP 做对照组探针
 
 - [ ] **嵌入式硬件采购与实测（M0 起）**
-  - What: 采购 STM32H7 核心板 + I2S codec + **图形点阵 LCD（含中文字库，中文全端显示 v0.7 #82）**，实测默认音频栈延迟（去 STL/单精度适配 + DSP+IR 实时性 + A2 Lite 档探针）
-  - Why: CEO 评审 2.1/3.4：5ms 数字泡沫风险；用数据决定预算；用户指定 H7 为起步板（省成本）
-  - Pros: 延迟目标基于实测而非猜测；验证引擎可移植性
-  - Cons: 硬件成本 ~¥200
-  - Context: 多芯片 DSP 方案已否决（引擎复用 0% + NAM 无法运行）；量产档位 M7 用 H7 vs 国产 Cortex-A 实测对比决定；**板型选择用户自定（未定，待下单）**
+  - What: 采购 **RK3308 ev 板**（Firefly ROC-RK3308-CC / 芯板类，~¥100-150，内置 8ch ADC/2ch DAC codec），实测默认音频栈延迟（Linux aarch64 原样编译 + DSP+IR 实时性 + UAC2 spike）
+  - Why: CEO 评审 2.1/3.4：5ms 数字泡沫风险；用数据决定预算；用户 2026-08-13 改判 RK3308（#109：一板三用，免 H7 裸机适配）
+  - Pros: 延迟目标基于实测而非猜测；与主力档芯片同族，验证结果直接可迁移
+  - Cons: 硬件成本 ~¥150
+  - Context: STM32H7 起步已否决（#109）；低端档 H7（去 STL/单精度 + 中文 LCD）整体移至 M8 研究；**板型已定 RK3308，待用户下单**
   - Depends on: M0
   - Priority: P1
 

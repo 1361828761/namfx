@@ -30,7 +30,7 @@
 | 决策点 | 结论 |
 |---|---|
 | 嵌入式目标 | **双档位**：主力档 = 国产 Cortex-A SoC + Linux（RK3308/RK3328 级，量产 BOM 实测后定）；低端档 = STM32H7 核心板（DSP+IR，A2 降档研究性）；**多芯片 DSP+处理器方案正式否决**（见 §11） |
-| 原型起步 | **STM32H7 核心板先行**（M0 采购，¥100-200，低成本验证引擎可移植性与真实延迟）；树莓派降级为可选参考平台（品牌溢价高，非默认） |
+| 原型起步 | **RK3308 ev 板先行**（M0 采购，~¥100-150，用户 2026-08-13 改判 #109：一块板同时服务 UAC2 spike + A2 bake-off + 主力档验证，内置 codec 直连音频路径；原 STM32H7 起步降为低端档 M8 研究）；树莓派降级为可选参考平台（品牌溢价高，非默认） |
 | 嵌入式主力芯片 | **候选：RK3308 / RK3328 / RK3566**（A2 bake-off 后定，不前置承诺）；RK3308 原生 8ch I2S 音频 SoC，RK3328 为性能备选；M4 用 ev board 实测 A2 实时性 |
 | NAM 集成 | 官方 NAM Core；构建期采用 FetchContent + 固定 commit（不用 submodule，避免拉入权重/训练目录）；隔离为独立静态库，SIMD 编译选项只出现在该 target |
 | 桌面 UI | JUCE |
@@ -40,7 +40,7 @@
 | NAM 架构兼容 | NAM Core 加载层兼容 A1/A2/LSTM 全部 .nam 文件（官方向后兼容承诺）；**A2 为 slimmable 架构**：同一文件内含 3ch（Lite）与 8ch（Full）子模型，运行时按档位切换；性能档位 = 控制加载架构 + A2 档位选择 |
 | 性能档位实现 | 低档平台：**slimmable A2 文件经用户显式确认后以 Lite 档加载**（保留"音色不在不知情时变化"原则）；非 slimmable 文件才拒绝并提示换 A1（v0.7 #64 裁决）；官方无 INT8/FP16 量化路径（.nam 权重固定 float32）——量化探针取消，改 A2 降档实测 |
 | NAM 许可 | Core/Plugin/Trainer 全 MIT，依赖栈（Eigen MPL2/nlohmann MIT/AudioDSPTools MIT）无 RTNeural 叠加；闭源商业内嵌允许，商用案例含 HeadRush/MOD Dwarf——原风险 5 解除 |
-| 嵌入式量产决策 | M0-M1 在 STM32H7 上验证引擎（去 STL/单精度适配 + DSP+IR 实时性 + A2 降档探针）；**M4 A2 bake-off（Full/Lite 档实测）**；M7a 后定量产档位 |
+| 嵌入式量产决策 | M0-M1 在 **RK3308** 上验证引擎（Linux 原样编译 + DSP+IR 实时性）；**M4 A2 bake-off（Full/Lite 档实测）**；M7a 后定量产档位 |
 | DIN MIDI | **砍掉**（v0.5 裁决）：USB-MIDI 覆盖 90% 场景，减少 M7 硬件调试面 |
 | 固件升级 | **v1 = rkdeveloptool 恢复烧写 + 单槽 bootcount 自动回滚**（1-1.5 周）；真 A/B 双镜像后置 v2（3-5 周自研活，非 v1） |
 | 场景切换语义 | **即时参数应用**（≤10ms 交叉淡化，模块声明立即/平滑生效）；G12（干音直通+预加载+淡入）只用于预设切换；场景不改链拓扑 |
@@ -321,7 +321,7 @@ nam/
 | **主力档** | 低成本国产 Cortex-A SoC（RK3308/RK3328 级）+ Linux + I2S codec | ~99%（原样编译 + NEON） | A1/A2 全系（档位按实测） | ~300 元（整机目标，含外置 DAC/耳放/屏/外壳，M4 bake-off 实测复算，v0.7 #69） | 完整功能量产形态 |
 | **低端档** | STM32H7 核心板（Cortex-M7 @480MHz）+ codec | ~60%（去 STL/单精度适配） | A2（Lite 档经显式确认加载，研究性） | ~200 元 | 练习级/低功耗形态 |
 
-- **M0 起步：STM32H7 核心板**（¥100-200，用户指定，省成本）：验证引擎可移植性（去 STL/单精度适配）、DSP+IR 实时性、A2 降档（Lite 档）探针、真实延迟数据
+- **M0 起步：RK3308 ev 板**（~¥100-150，用户 2026-08-13 改判 #109：Firefly ROC-RK3308-CC / 芯板类）：验证引擎 Linux 原样编译（aarch64）、DSP+IR 实时性、内置 codec（8ch ADC/2ch DAC）音频路径、真实延迟数据；UAC2 spike 直接在本板跑（Linux UAC2 gadget）
 - **M4 A2 bake-off**：用 RK3308/RK3328 ev board 实测 A2 Full/Lite 档推理（官方无量化路径），再定量产档位芯片与档位承诺（数据说话，不前置承诺"RK3308 主选"）
 - **树莓派降级为可选参考平台**（品牌溢价高，非默认；CM4 缺货溢价）
 - **多芯片 DSP+处理器方案正式否决**（理由见选型分析）
@@ -335,7 +335,7 @@ nam/
 - **codec/ADC 选型（v0.6 事实修正）**：RK3308 内置 codec 为 **8ch ADC + 2ch DAC**（8ch I2S 采集侧、回放侧仅 2ch）——吉他输入（ADC 方向）可复用内置；**立体声主输出 + 耳机 + FX loop 回放需外置 I2S DAC**（AK4458/Cirrus 类，110dB+）或双 codec 方案；AK4458 是纯 DAC 无 ADC，输入路径需独立 ADC（AK5558/CS5340 类）或复用 RK 内置 ADC；避免 SoC 内置 codec 音质瓶颈（模拟前端另行设计）
 - **H7 适配约束**：core 禁止依赖 STL 堆容器在音频路径（已有实时安全原则），适配点集中在分配器与线程抽象；H7 无 Linux，HAL 层提供裸机实现
 - M0 增加一次 moddsp/modep（MOD Devices，开源嵌入式+桌面共享 LV2 踏板链）生态调研（半天），确认没有可直接省 3 个里程碑的路径
-- **UAC2 spike 前置 M0-M1**（v0.5 裁决；v0.7 #106 修订验收口径）：在 H7 或低价 RK3308 ev board 上验证 UAC2 录放（异步反馈 + I2S 本地晶振双时钟域是最深坑）；**M1 验收 = spike 跑通 + ≥8h 初步数据，24h 无漂移结论移 M2**，不等到 M7 才第一次碰
+- **UAC2 spike 前置 M0-M1**（v0.5 裁决；v0.7 #106 修订验收口径；#109 起在 RK3308 上跑）：RK3308 Linux UAC2 gadget 枚举为声卡，验证录放（异步反馈 + I2S 本地晶振双时钟域是最深坑）；**M1 验收 = spike 跑通 + ≥8h 初步数据，24h 无漂移结论移 M2**，不等到 M7 才第一次碰
 
 ### 硬件接口清单（M7 拆分交付，v0.5 修订）
 
@@ -374,10 +374,10 @@ nam/
 
 | 里程碑 | 内容 | 验证标准 | 预估 |
 |---|---|---|---|
-| M0 骨架 | git init + monorepo + CMake + CI + 实时安全检测框架 + moddsp/modep 生态调研 + 采购 STM32H7 核心板 + **UAC2 spike 启动** | 音频直通无爆音；回调分配计数器生效 | 2-3 周 |
+| M0 骨架 | git init + monorepo + CMake + CI + 实时安全检测框架 + moddsp/modep 生态调研 + 采购 RK3308 ev 板（#109）+ **UAC2 spike 启动** | 音频直通无爆音；回调分配计数器生效 | 2-3 周 |
 
 > M0 详细任务分解（T1-T9，到文件级）见 `docs/EXECUTION.md` §9。
-| M1 音色链核心 | 槽位模型、模块注册表、bypass/mix、图交换协议、参数自动化、预设 JSON 存取（nlohmann 豁免）+ 迁移框架（含 scenes 字段）+ 备份（5 版 + 原子协议）；core 可移植性验证（H7 交叉编译，**-fno-exceptions/-fno-rtti 旗标契约**）+ UAC2 spike 跑通 | 预设保存/加载往返一致；**全 DSP 演示链打通出声**（NAM+IR 出声验收移 M4，v0.7 #63）；H7 引擎可编译可运行；UAC2 ≥8h 初步数据 | 3.5-4.5 周 |
+| M1 音色链核心 | 槽位模型、模块注册表、bypass/mix、图交换协议、参数自动化、预设 JSON 存取（nlohmann 豁免）+ 迁移框架（含 scenes 字段）+ 备份（5 版 + 原子协议）；core 可移植性验证（**RK3308 Linux aarch64 原样交叉编译**）+ UAC2 spike 跑通 | 预设保存/加载往返一致；**全 DSP 演示链打通出声**（NAM+IR 出声验收移 M4，v0.7 #63）；RK3308 引擎可编译可运行；UAC2 ≥8h 初步数据 | 3.5-4.5 周 |
 | M2 DSP 库 | 通用模块（门限/压缩/EQ/延迟/算法混响/调制）+ **音高家族（单音：移调核心 → 八度/whammy/和声器）** | 单元+回归+参数空间扫描通过；移调核心可演出级 | 4-6 周 |
 | M3 IR 引擎 | 分区卷积、WAV 加载 + 高质量重采样、cab/空间 IR | 与参考实现误差 < -100dB | 2-3 周 |
 | M4 NAM 集成 | NAM Core 封装（独立静态库）、A1/A2（Full/Lite 档）加载、微调参数、**96k 策略（M4 开头 spike 定：内部重采样 vs 48k 域处理）**、**A2 bake-off（RK ev board，Full/Lite 档实测）** | .nam 加载出声；双端可加载 + 音色主观一致；**主力档芯片决策（数据驱动）** | 3-4 周 |
@@ -714,6 +714,7 @@ VERDICT: APPROVED（v0.5）。二轮总修复 12 项，审计轨迹累计 52 条
 | 106 | Eng | UAC2 24h 结论移 M2；M1 只收 spike 跑通+≥8h | User-challenge | P3 | M1 已含链核心+迁移+H7 交叉编译，排期不支持 | M1 全收（#49） |
 | 107 | Eng | WASAPI 断开=自动重连+回退共享；IR 热替换不静默热换 | Mechanical | P5 | 状态表无设备断开行；静默热换=演出中音色突变 | — |
 | 108 | Eng | 构建基建：嵌入式 preset+离线 vendoring 路径+CI 钉编译器版本 | Mechanical | P3 | 交叉编译离线机无法 configure；WError 跨版本漂移 | — |
+| 109 | HW | M0 起步板改 RK3308 ev 板（用户 2026-08-13 改判，原 #32 为 STM32H7） | User-confirmed（用户改判） | P3 | 一块 RK3308 同时服务 UAC2 spike（Linux 原生）+ M4 A2 bake-off + 主力档验证；内置 codec 直连音频路径；免 H7 裸机去 STL/单精度适配（低端档整体移至 M8 研究）；引擎复用 ~99% 而非 ~60% | STM32H7 起步 |
 
 ### 第 4 轮用户裁决（Final Approval Gate，2026-08-13）
 
