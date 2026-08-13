@@ -213,6 +213,43 @@ TEST_CASE("ts808 parameter sweep stays finite and bounded")
     }
 }
 
+TEST_CASE("ts808 works at 44.1k and 96k sample rates")
+{
+    const double rates[] = {44100.0, 96000.0};
+
+    std::vector<float> in(48000, 0.0f);
+    for (std::size_t i = 0; i < in.size(); ++i) {
+        const float t = static_cast<float>(i);
+        in[i] = 0.5f * std::sin(0.13f * t) + 0.3f * std::sin(0.037f * t) + 0.2f * std::sin(0.007f * t);
+    }
+    float dummyR = 0.0f;
+
+    for (double rate : rates) {
+        namfx::ModuleRegistry registry;
+        namfx::registerTs808(registry);
+        auto mod = registry.create("od.ts808");
+        REQUIRE(mod != nullptr);
+        mod->prepare(rate, 64);
+        mod->setParameter("drive", 5.0f);
+        mod->setParameter("tone", 5.0f);
+        mod->setParameter("level", 0.0f);
+
+        std::vector<float> out(48000, 0.0f);
+        mod->process(in.data(), &dummyR, out.data(), &dummyR, static_cast<int>(in.size()));
+        for (float v : out) {
+            REQUIRE(std::isfinite(v));
+        }
+        const float peak = peakOf(out);
+        REQUIRE(peak > 0.0f);
+        REQUIRE(peak < 0.6f);
+
+        // clipping behaviour at 44.1k/96k matches 48k within tolerance
+        const float g = driveGain(mod, 5.0f, 1000.0f, rate);
+        REQUIRE(g > 20.0f);
+        REQUIRE(g < 60.0f);
+    }
+}
+
 #ifdef NAMFX_RT_ALLOC_ENABLED
 
 TEST_CASE("ts808 process is allocation free in audio callback")

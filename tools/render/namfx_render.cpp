@@ -16,7 +16,6 @@
 
 namespace {
 
-constexpr int kSampleRate = 48000;
 constexpr int kChannels = 2;
 
 struct AudioInput {
@@ -24,7 +23,7 @@ struct AudioInput {
     std::vector<float> right;
 };
 
-bool readWav(const std::string& path, AudioInput& input)
+bool readWav(const std::string& path, AudioInput& input, int targetRate)
 {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
@@ -91,6 +90,14 @@ bool readWav(const std::string& path, AudioInput& input)
                     if (format == 1 && bitsPerSample == 16) {
                         return static_cast<float>(static_cast<std::int16_t>(toU16(data.data() + offset))) / 32768.0f;
                     }
+                    if (format == 1 && bitsPerSample == 24) {
+                        const std::uint32_t raw =
+                            static_cast<std::uint32_t>(static_cast<unsigned char>(data.data()[offset])) |
+                            (static_cast<std::uint32_t>(static_cast<unsigned char>(data.data()[offset + 1])) << 8) |
+                            (static_cast<std::uint32_t>(static_cast<unsigned char>(data.data()[offset + 2])) << 16);
+                        const std::int32_t value = static_cast<std::int32_t>(raw << 8) >> 8;
+                        return static_cast<float>(value) / 8388608.0f;
+                    }
                     return 0.0f;
                 };
                 samplesL[f] = sampleAt(0);
@@ -105,14 +112,14 @@ bool readWav(const std::string& path, AudioInput& input)
     if (sourceRate == 0 || samplesL.empty()) {
         return false;
     }
-    if (sourceRate == kSampleRate) {
+    if (sourceRate == targetRate) {
         input.left = std::move(samplesL);
         input.right = std::move(samplesR);
         return true;
     }
 
     // linear resample to the engine rate
-    const double ratio = static_cast<double>(sourceRate) / static_cast<double>(kSampleRate);
+    const double ratio = static_cast<double>(sourceRate) / static_cast<double>(targetRate);
     const std::size_t outFrames = static_cast<std::size_t>(static_cast<double>(samplesL.size()) / ratio);
     input.left.resize(outFrames);
     input.right.resize(outFrames);
@@ -127,10 +134,11 @@ bool readWav(const std::string& path, AudioInput& input)
     return true;
 }
 
-void writeWav(const std::string& path, const std::vector<float>& left, const std::vector<float>& right)
+void writeWav(const std::string& path, const std::vector<float>& left, const std::vector<float>& right,
+              int sampleRate)
 {
     const std::uint32_t dataSize = static_cast<std::uint32_t>(left.size() * kChannels * 2);
-    const std::uint32_t byteRate = static_cast<std::uint32_t>(kSampleRate * kChannels * 2);
+    const std::uint32_t byteRate = static_cast<std::uint32_t>(sampleRate * kChannels * 2);
     std::ofstream out(path, std::ios::binary);
     const auto writeU32 = [&out](std::uint32_t value) {
         out.put(static_cast<char>(value & 0xFF));
@@ -149,7 +157,7 @@ void writeWav(const std::string& path, const std::vector<float>& left, const std
     writeU32(16);
     writeU16(1);
     writeU16(kChannels);
-    writeU32(kSampleRate);
+    writeU32(sampleRate);
     writeU32(byteRate);
     writeU16(static_cast<std::uint16_t>(kChannels * 2));
     writeU16(16);
@@ -167,7 +175,7 @@ void writeWav(const std::string& path, const std::vector<float>& left, const std
 
 int usage()
 {
-    std::printf("usage: namfx_render --preset <file.json> [--in input.wav] [--seconds N] [--freq Hz] [--out out.wav]\n");
+    std::printf("usage: namfx_render --preset <file.json> [--in input.wav] [--seconds N] [--freq Hz] [--out out.wav] [--rate 44100|48000|96000]\n");
     return 1;
 }
 
@@ -180,6 +188,7 @@ int main(int argc, char** argv)
     std::string outPath = "render.wav";
     double seconds = 2.0;
     double freq = 440.0;
+    int sampleRate = 48000;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--preset" && i + 1 < argc) {
@@ -192,12 +201,18 @@ int main(int argc, char** argv)
             seconds = std::stod(argv[++i]);
         } else if (arg == "--freq" && i + 1 < argc) {
             freq = std::stod(argv[++i]);
+        } else if (arg == "--rate" && i + 1 < argc) {
+            sampleRate = std::stoi(argv[++i]);
         } else {
             return usage();
         }
     }
     if (presetPath.empty()) {
         return usage();
+    }
+    if (sampleRate != 44100 && sampleRate != 48000 && sampleRate != 96000) {
+        std::printf("error: --rate must be 44100, 48000 or 96000\n");
+        return 1;
     }
 
     std::ifstream file(presetPath, std::ios::binary);
@@ -225,20 +240,20 @@ int main(int argc, char** argv)
     }
 
     namfx::audio::Chain chain(preset.chain, registry);
-    chain.prepare(kSampleRate, 64);
+    chain.prepare(sampleRate, 64);
 
     AudioInput input;
     if (!inPath.empty()) {
-        if (!readWav(inPath, input)) {
-            std::printf("error: cannot read wav %s (need 16-bit PCM or float32)\n", inPath.c_str());
+        if (!readWav(inPath, input, sampleRate)) {
+            std::printf("error: cannot read wav %s (need 16/24-bit PCM or float32)\n", inPath.c_str());
             return 1;
         }
-        seconds = static_cast<double>(input.left.size()) / kSampleRate;
+        seconds = static_cast<double>(input.left.size()) / sampleRate;
         std::printf("using %s: %d samples, %d sec\n", inPath.c_str(),
                     static_cast<int>(input.left.size()), static_cast<int>(seconds));
     }
 
-    const int totalSamples = static_cast<int>(seconds * kSampleRate);
+    const int totalSamples = static_cast<int>(seconds * sampleRate);
     std::vector<float> inL(64, 0.0f);
     std::vector<float> inR(64, 0.0f);
     std::vector<float> outL(static_cast<std::size_t>(totalSamples));
@@ -258,13 +273,13 @@ int main(int argc, char** argv)
                 inL[static_cast<std::size_t>(i)] =
                     static_cast<float>(std::sin(phase) * 0.5);
                 inR[static_cast<std::size_t>(i)] = 0.0f;
-                phase += kTwoPi * freq / kSampleRate;
+                phase += kTwoPi * freq / sampleRate;
             }
         }
         chain.process(inL.data(), inR.data(), outL.data() + offset, outR.data() + offset, count);
     }
 
-    writeWav(outPath, outL, outR);
+    writeWav(outPath, outL, outR, sampleRate);
     std::printf("rendered %d samples to %s\n", totalSamples, outPath.c_str());
     return 0;
 }
