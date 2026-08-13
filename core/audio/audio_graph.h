@@ -27,6 +27,7 @@ public:
 private:
     std::shared_ptr<const ModuleRegistry> registry_;
     std::atomic<Chain*> pending_{nullptr};
+    std::atomic<Chain*> retired_{nullptr};
     std::unique_ptr<Chain> slots_[2];
     std::atomic<int> current_{0};
 };

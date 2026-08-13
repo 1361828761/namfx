@@ -116,6 +116,55 @@ TEST_CASE("tone lowpass attenuates a high frequency more than a low frequency")
     REQUIRE(highPass > 0.0);
 }
 
+TEST_CASE("mono in stereo out module produces distinct right channel through the chain")
+{
+    class MonoToStereoModule final : public namfx::ModuleBase {
+    public:
+        void prepare(double, int) override {}
+        void process(const float* inL, const float*, float* outL, float* outR, int n) override
+        {
+            for (int i = 0; i < n; ++i) {
+                outL[i] = inL[i];
+                outR[i] = inL[i] * 0.5f;
+            }
+        }
+        void reset() override {}
+        void setSampleRate(double) override {}
+        void setMaxBlock(int) override {}
+        namfx::ChannelMode channelMode() const override
+        {
+            return namfx::ChannelMode::MonoInStereoOut;
+        }
+    };
+
+    auto registry = std::make_shared<namfx::ModuleRegistry>();
+    registry->registerModule("test.mono_to_stereo", "pedal", {},
+                             [] { return std::make_unique<MonoToStereoModule>(); });
+
+    std::vector<namfx::audio::SlotDef> slots;
+    namfx::audio::SlotDef def;
+    def.slot = 0;
+    def.category = "pedal";
+    def.impl = "dsp";
+    def.moduleId = "test.mono_to_stereo";
+    slots.push_back(std::move(def));
+
+    namfx::audio::Chain chain(std::move(slots), registry);
+    chain.prepare(48000.0, 256);
+
+    constexpr int n = 256;
+    const std::vector<float> inL = sine(n, 440.0, 48000.0, 0.5f);
+    std::vector<float> inR(static_cast<std::size_t>(n), 0.25f);
+    std::vector<float> outL(static_cast<std::size_t>(n));
+    std::vector<float> outR(static_cast<std::size_t>(n));
+    chain.process(inL.data(), inR.data(), outL.data(), outR.data(), n);
+
+    for (int i = 0; i < n; ++i) {
+        REQUIRE(outL[static_cast<std::size_t>(i)] == inL[static_cast<std::size_t>(i)]);
+        REQUIRE(outR[static_cast<std::size_t>(i)] == inL[static_cast<std::size_t>(i)] * 0.5f);
+    }
+}
+
 TEST_CASE("mono in mono out module duplicates the left channel processing to the right")
 {
     auto registry = testx::makeRegistry();

@@ -168,6 +168,11 @@ bool loadScenes(const nlohmann::json& scenesNode, const ModuleRegistry& registry
                 SceneOverride overrideDef;
                 overrideDef.moduleId = overrideNode["moduleId"].get<std::string>();
                 if (!registry.has(overrideDef.moduleId)) {
+                    if (mode == LoadMode::Strict) {
+                        report.errors.push_back("scene override for unknown module '"
+                                                + overrideDef.moduleId + "'");
+                        return false;
+                    }
                     report.warnings.push_back("scene override for unknown module '"
                                               + overrideDef.moduleId + "' ignored");
                     continue;

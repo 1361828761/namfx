@@ -51,8 +51,7 @@ void Ts808Module::reset()
 
 void Ts808Module::setSampleRate(double sampleRate)
 {
-    clipping_.prepare(sampleRate);
-    tone_.prepare(sampleRate);
+    prepare(sampleRate, 0);
 }
 
 void Ts808Module::setMaxBlock(int)

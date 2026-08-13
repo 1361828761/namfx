@@ -1,6 +1,8 @@
 #include "audio/audio_graph.h"
 #include "audio/chain.h"
 #include "audio/slot.h"
+#include "modules/dsp/gain.h"
+#include "modules/module_registry.h"
 #include "test_registry.h"
 
 #include <catch2/catch_approx.hpp>
@@ -31,6 +33,59 @@ std::unique_ptr<namfx::audio::Chain> makeChain(
     const std::shared_ptr<const namfx::ModuleRegistry>& registry, float gainDb)
 {
     auto chain = std::make_unique<namfx::audio::Chain>(gainSlot(gainDb), registry);
+    chain->prepare(48000.0, 64);
+    return chain;
+}
+
+// module whose destructor records that it ran, to prove retired chains are
+// not destroyed inside processBlock (audio thread)
+class DestructorFlagModule final : public namfx::ModuleBase {
+public:
+    explicit DestructorFlagModule(std::atomic<bool>& flag) : flag_(flag) {}
+    ~DestructorFlagModule() override
+    {
+        flag_.store(true, std::memory_order_relaxed);
+    }
+
+    void prepare(double, int) override {}
+    void process(const float* inL, const float*, float* outL, float*, int n) override
+    {
+        for (int i = 0; i < n; ++i) {
+            outL[i] = inL[i];
+        }
+    }
+    void reset() override {}
+    void setSampleRate(double) override {}
+    void setMaxBlock(int) override {}
+    namfx::ChannelMode channelMode() const override
+    {
+        return namfx::ChannelMode::MonoInMonoOut;
+    }
+
+private:
+    std::atomic<bool>& flag_;
+};
+
+std::shared_ptr<const namfx::ModuleRegistry> flagRegistry(std::atomic<bool>& flag)
+{
+    auto registry = std::make_shared<namfx::ModuleRegistry>();
+    namfx::registerGain(*registry);
+    registry->registerModule("test.destructor_flag", "pedal", {},
+                              [&flag] { return std::make_unique<DestructorFlagModule>(flag); });
+    return registry;
+}
+
+std::unique_ptr<namfx::audio::Chain> makeFlagChain(
+    const std::shared_ptr<const namfx::ModuleRegistry>& registry)
+{
+    std::vector<namfx::audio::SlotDef> slots;
+    namfx::audio::SlotDef def;
+    def.slot = 0;
+    def.category = "pedal";
+    def.impl = "dsp";
+    def.moduleId = "test.destructor_flag";
+    slots.push_back(std::move(def));
+    auto chain = std::make_unique<namfx::audio::Chain>(std::move(slots), registry);
     chain->prepare(48000.0, 64);
     return chain;
 }
@@ -120,4 +175,38 @@ TEST_CASE("concurrent swap while processing always sees a consistent chain")
     reader.join();
 
     REQUIRE(bad.load() == 0);
+}
+
+TEST_CASE("retired chain is destroyed by the control thread, not inside processBlock")
+{
+    std::atomic<bool> destroyed{false};
+    auto registry = flagRegistry(destroyed);
+    namfx::audio::AudioGraph graph;
+
+    constexpr int n = 64;
+    const std::vector<float> in(static_cast<std::size_t>(n), 1.0f);
+    std::vector<float> outL(static_cast<std::size_t>(n));
+    std::vector<float> outR(static_cast<std::size_t>(n));
+
+    graph.requestSwap(makeChain(registry, 0.0f));
+    graph.processBlock(in.data(), in.data(), outL.data(), outR.data(), n);
+
+    // swap the flag chain in: it becomes live, the previous chain retires
+    graph.requestSwap(makeFlagChain(registry));
+    graph.processBlock(in.data(), in.data(), outL.data(), outR.data(), n);
+    REQUIRE_FALSE(destroyed.load());
+
+    // next swap displaces the plain chain, not the flag chain
+    graph.requestSwap(makeChain(registry, 6.0f));
+    graph.processBlock(in.data(), in.data(), outL.data(), outR.data(), n);
+    REQUIRE_FALSE(destroyed.load());
+
+    // now the flag chain is displaced into the retire slot
+    graph.requestSwap(makeChain(registry, 0.0f));
+    graph.processBlock(in.data(), in.data(), outL.data(), outR.data(), n);
+    REQUIRE_FALSE(destroyed.load());
+
+    // the next control-thread request drains the retired chain
+    graph.requestSwap(makeChain(registry, 6.0f));
+    REQUIRE(destroyed.load());
 }

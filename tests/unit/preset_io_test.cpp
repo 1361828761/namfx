@@ -212,6 +212,48 @@ TEST_CASE("wrong type for chain does not crash")
     REQUIRE_FALSE(report.ok());
 }
 
+TEST_CASE("strict mode rejects scene overrides for unknown modules")
+{
+    auto registry = testx::makeRegistry();
+    const std::string json = R"({
+        "schema": 1,
+        "name": "BadScene",
+        "chain": [
+            { "slot": 0, "category": "pedal", "impl": "dsp", "module": "gain", "params": {"gain": 3.0} }
+        ],
+        "scenes": [
+            { "name": "Solo", "overrides": [ { "moduleId": "does.not.exist", "bypass": true } ] }
+        ]
+    })";
+    namfx::preset::LoadReport report;
+    const namfx::preset::Preset loaded = namfx::preset::loadPreset(
+        json, namfx::preset::LoadMode::Strict, *registry, report);
+    REQUIRE_FALSE(report.ok());
+    REQUIRE(loaded.scenes.empty());
+}
+
+TEST_CASE("tolerant mode skips scene overrides for unknown modules with a warning")
+{
+    auto registry = testx::makeRegistry();
+    const std::string json = R"({
+        "schema": 1,
+        "name": "BadScene",
+        "chain": [
+            { "slot": 0, "category": "pedal", "impl": "dsp", "module": "gain", "params": {"gain": 3.0} }
+        ],
+        "scenes": [
+            { "name": "Solo", "overrides": [ { "moduleId": "does.not.exist", "bypass": true } ] }
+        ]
+    })";
+    namfx::preset::LoadReport report;
+    const namfx::preset::Preset loaded = namfx::preset::loadPreset(
+        json, namfx::preset::LoadMode::Tolerant, *registry, report);
+    REQUIRE(report.ok());
+    REQUIRE(loaded.scenes.size() == 1);
+    REQUIRE(loaded.scenes[0].overrides.empty());
+    REQUIRE_FALSE(report.warnings.empty());
+}
+
 TEST_CASE("more than eight scenes are truncated with a warning")
 {
     auto registry = testx::makeRegistry();

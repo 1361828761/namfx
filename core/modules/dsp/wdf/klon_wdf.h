@@ -13,7 +13,8 @@ namespace namfx {
 // Klon-style diode pair: reverse-parallel pair with Is = 15uA (vs ~25nA for a
 // 1N914) giving a much higher, softer clipping knee - the "transparent" sound.
 // For quiet signals the Wright Omega approximation has errors near zero, so a
-// small LUT is used there (build time, never in the audio callback).
+// small LUT is used there (built on first construction, which is the load path
+// off the audio thread; never built inside the audio callback).
 template <typename T, typename Next>
 class KlonDiodePair final : public chowdsp::wdft::RootWDF {
 public:
@@ -21,6 +22,7 @@ public:
     {
         next_.connectToParent(this);
         calcImpedance();
+        (void)makeLut();
     }
 
     void calcImpedance() override
