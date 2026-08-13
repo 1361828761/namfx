@@ -83,21 +83,14 @@
 
 ## P1 — 近期（M0/M1 范围内）
 
-- [ ] **moddsp/modep 生态调研（M0，半天）**
-  - What: 调研 MOD Devices 开源平台（嵌入式+桌面共享 LV2 踏板链）
-  - Why: CEO 评审 4.2：可能与本项目目标高度重合，确认是否有直接省 3 个里程碑的路径
-  - Pros: 避免重复造轮子；可借鉴架构
-  - Cons: 半天时间成本
-  - Context: 评审确定加入 M0
-  - Depends on: M0
-  - Priority: P1
+- [x] **moddsp/modep 生态调研（M0，半天）** ✅ 已完成（2026-08-13，`docs/research/modep.md`）：结论 partial——不借道（GPL 传染 + JACK 多进程栈破坏 5ms/零依赖/双端共享引擎三条红线）；借鉴 10 条（mod-host 命令总线、mod-ui 连接状态机、pi-stomp 三端 UX、Guitarix 算法干净室参照）；建议 M4 bake-off 顺路跑 MODEP 做对照组探针
 
 - [ ] **嵌入式硬件采购与实测（M0 起）**
   - What: 采购 STM32H7 核心板 + I2S codec + **图形点阵 LCD（含中文字库，中文全端显示 v0.7 #82）**，实测默认音频栈延迟（去 STL/单精度适配 + DSP+IR 实时性 + A2 Lite 档探针）
   - Why: CEO 评审 2.1/3.4：5ms 数字泡沫风险；用数据决定预算；用户指定 H7 为起步板（省成本）
   - Pros: 延迟目标基于实测而非猜测；验证引擎可移植性
   - Cons: 硬件成本 ~¥200
-  - Context: 多芯片 DSP 方案已否决（引擎复用 0% + NAM 无法运行）；量产档位 M7 用 H7 vs 国产 Cortex-A 实测对比决定
+  - Context: 多芯片 DSP 方案已否决（引擎复用 0% + NAM 无法运行）；量产档位 M7 用 H7 vs 国产 Cortex-A 实测对比决定；**板型选择用户自定（未定，待下单）**
   - Depends on: M0
   - Priority: P1
 

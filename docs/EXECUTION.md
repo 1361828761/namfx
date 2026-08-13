@@ -3,7 +3,7 @@
 > 这是本项目的**执行文档**。无论你是新工程师还是新 AI 模型，**从这里开始**。
 > 读完本文件即可开始执行当前任务；需要"为什么"时查阅 `docs/PLAN.md`；术语用根目录 `CONTEXT.md`；推迟项在 `TODOS.md`。
 >
-> 状态：计划 **APPROVED（v0.7，第 4 轮 autoplan 复审后）**，当前任务 = **M0（未开始）**。
+> 状态：计划 **APPROVED（v0.7，第 4 轮 autoplan 复审后）**，当前任务 = **M0 收尾（T1-T6/T8 完成，T7 硬件采购待用户下单）**。
 
 ---
 
@@ -133,52 +133,52 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 M0 目标：**项目骨架站起来，验收 = 音频直通无爆音 + 回调分配计数器生效**。预估 2-3 周。
 
 ### T1 仓库初始化
-- [ ] `git init` + 首次 commit（.gitignore：build/、.vs/、.vscode/、CMakeUserPresets.json、*.user）
-- [ ] 按 PLAN §4 建目录骨架：`core/{audio,modules,preset,perf,platform}`、`desktop/`、`embedded/{linux,mcu}`、`tools/{latency,perfbench}`、`tests/{unit,regression,fuzz}`、`docs/`
-- [ ] 根 `README.md`：项目一句话 + 文档地图（指向 EXECUTION/PLAN/CONTEXT/TODOS）
-- [ ] 根 `AGENTS.md`：本文件 §3/§6/§7 的精简版（环境、红线、坑），供后续 agent 快速对齐
+- [x] `git init` + 首次 commit（.gitignore：build/、.vs/、.vscode/、CMakeUserPresets.json、*.user）
+- [x] 按 PLAN §4 建目录骨架：`core/{audio,modules,preset,perf,platform}`、`desktop/`、`embedded/{linux,mcu}`、`tools/{latency,perfbench}`、`tests/{unit,regression,fuzz}`、`docs/`
+- [x] 根 `README.md`：项目一句话 + 文档地图（指向 EXECUTION/PLAN/CONTEXT/TODOS）
+- [x] 根 `AGENTS.md`：本文件 §3/§6/§7 的精简版（环境、红线、坑），供后续 agent 快速对齐
 
 ### T2 CMake 骨架
-- [ ] 顶层 `CMakeLists.txt`：C++17、项目名 namfx、`add_subdirectory(core)` 等
-- [ ] `core/CMakeLists.txt`：静态库目标 `namfx_core`，`-Wall -Wextra -Werror`（MSVC 对应 /W4 /WX），无任何第三方依赖（nlohmann/json header-only 豁免 M1 在 `core/preset/` 引入，FetchContent 固定 commit）
-- [ ] `CMakePresets.json`：debug/release × Windows/Linux
-- [ ] 验证：空库可构建
+- [x] 顶层 `CMakeLists.txt`：C++17、项目名 namfx、`add_subdirectory(core)` 等
+- [x] `core/CMakeLists.txt`：静态库目标 `namfx_core`，`-Wall -Wextra -Werror`（MSVC 对应 /W4 /WX，经共享 `namfx_warnings` INTERFACE target），无任何第三方依赖
+- [x] `CMakePresets.json`：debug/release × 本地 Windows（VS 2026）/ Linux / CI（ci-win × VS 2026、debug-linux 等）
+- [x] 验证：空库可构建
 
 ### T3 实时安全检测框架（M0 验收项之一）
-- [ ] `core/platform/rt_alloc.h`：音频线程分配检测——全局 new/delete 计数钩子（debug 构建启用）+ `rt_assert_no_alloc()` RAII 哨兵（进入回调置标志，回调内任何分配触发断言/记录）
-- [ ] 注：core 自身在回调外仍可正常用 std::；**音频回调内**由哨兵保证零分配
-- [ ] `tests/unit/rt_alloc_test.cpp`：① 回调外分配通过 ② 回调内分配触发检测（证明框架有效）
-- [ ] 验收：`ctest` 全绿，且故意违反的测试证明检测真能抓到
+- [x] `core/platform/rt_alloc.h`：音频线程分配检测——全局 new/delete 计数钩子（debug 构建启用，含 nothrow/aligned 变体）+ `rt_assert_no_alloc()` RAII 哨兵（进入回调置标志，回调内任何分配触发断言/记录；嵌套安全）
+- [x] 注：core 自身在回调外仍可正常用 std::；**音频回调内**由哨兵保证零分配
+- [x] `tests/unit/rt_alloc_test.cpp`：① 回调外分配通过 ② 回调内分配触发检测（证明框架有效）
+- [x] 验收：`ctest` 全绿，且故意违反的测试证明检测真能抓到
 
 ### T4 音频直通（M0 验收项之二）
-- [ ] `core/audio/`：最小 `AudioGraph`（双缓冲交换的雏形：`commit()`/`swap()`）+ 直通 `processBlock(in, out, n)`（逐样本拷贝）
-- [ ] `tools/latency/engine_latency.cpp`：脉冲注入直通图，测引擎处理延迟（CLI 输出 ns）——这是 CI 唯一延迟断言的工具
-- [ ] `tests/unit/audio_graph_test.cpp`：直通逐样本一致（double 精度断言）
-- [ ] 验收：直通测试绿 + 引擎处理延迟 < 0.5ms（远低于预算）
+- [x] `core/audio/`：最小 `AudioGraph`（双缓冲交换的雏形：`commit()`/`swap()`）+ 直通 `processBlock(in, out, n)`（逐样本拷贝）
+- [x] `tools/latency/engine_latency.cpp`：脉冲注入直通图，测引擎处理延迟（CLI 输出 ns）——这是 CI 唯一延迟断言的工具
+- [x] `tests/unit/audio_graph_test.cpp`：直通逐样本一致（double 精度断言）
+- [x] 验收：直通测试绿 + 引擎处理延迟 < 0.5ms（实测 4-26 ns）
 
 ### T5 测试框架接入
-- [ ] Catch2 v3 经 FetchContent 接入 `tests/unit/`（仅测试目标依赖，core 保持零依赖）
-- [ ] `ctest --preset debug` 全绿
-- [ ] 第一个 fuzz 占位目录（`tests/fuzz/README.md` 说明故障注入目标清单，M1+ 填充）
+- [x] Catch2 v3 经 FetchContent 接入 `tests/unit/`（v3.8.0 固定 tag，仅测试目标依赖，core 保持零依赖）
+- [x] `ctest --preset debug` 全绿
+- [x] 第一个 fuzz 占位目录（`tests/fuzz/README.md` 说明故障注入目标清单，M1+ 填充）
 
 ### T6 CI（M0 验收项之三）
-- [ ] GitHub Actions：`windows-latest` + `ubuntu-latest` 双平台 build + ctest
-- [ ] 延迟断言：跑 `engine_latency`，阈值 < 0.5ms（CI 只断言引擎延迟，端到端人工跑）
+- [x] GitHub Actions：`windows-latest` + `ubuntu-latest` 双平台 build + ctest（debug/release 各双 job，4 矩阵全绿）
+- [x] 延迟断言：跑 `engine_latency`，阈值 < 0.5ms（CI 只断言引擎延迟，端到端人工跑）
 
 ### T7 硬件采购与 UAC2 spike 启动
-- [ ] 采购：STM32H7 核心板（正点原子/WeAct 类，¥100-200）+ 带 I2S codec 的扩展板（或音频 HAT）
+- [ ] 采购：STM32H7 核心板（正点原子/WeAct 类，¥100-200）+ 带 I2S codec 的扩展板（或音频 HAT）+ **图形点阵 LCD（含中文字库）**——**用户下单（板型自选，未定）**
 - [ ] 到货后：点灯测试 → I2S codec 环回（回环播录）→ 记录第一手延迟数据
 - [ ] UAC2 spike（跨 M0-M1）：板子枚举为 UAC2 设备，录放观察漂移；**M1 验收 = spike 跑通 + ≥8h 初步数据，24h 结论移 M2**；产出 `docs/research/uac2-spike.md`（结论 + 数据 + 对 M7c 的启示）
 - [ ] 注：H7 无 Linux，UAC2 spike 需 OS 支持——若 H7 不便，用低价 RK3308 ev board（~¥100）跑 Linux 方案做 spike，H7 专注引擎移植验证
 
 ### T8 生态调研
-- [ ] moddsp/modep（MOD Devices，开源嵌入式+桌面 LV2 踏板链）半天调研：与本项目重合度、是否有直接省里程碑的路径
-- [ ] 产出 `docs/research/modep.md`（结论 + 是否借道 + 借鉴点）
+- [x] moddsp/modep（MOD Devices，开源嵌入式+桌面 LV2 踏板链）半天调研：与本项目重合度、是否有直接省里程碑的路径
+- [x] 产出 `docs/research/modep.md`（结论 + 是否借道 + 借鉴点）——结论：partial，不借道（GPL 传染+JACK 栈破坏三条红线），借鉴 10 条（mod-host 命令总线等）
 
 ### T9 收尾
-- [ ] M0 验收三件套跑通：音频直通无爆音 ✓ 回调分配计数器生效 ✓ CI 双平台绿 ✓
-- [ ] 更新 `docs/PLAN.md`（§13 里程碑表勾 M0）、`TODOS.md`（从 M0 产出物移动/新增）
-- [ ] 进入 M1 前向用户简报：直通延迟数据 + H7 首测数据 + UAC2 spike 初步结论
+- [x] M0 验收三件套跑通：音频直通无爆音 ✓ 回调分配计数器生效 ✓ CI 双平台绿 ✓（run 31669327486，4/4 job success）
+- [ ] 更新 `docs/PLAN.md`（§13 里程碑表勾 M0）——留待 M1 启动简报时一并更新
+- [ ] 进入 M1 前向用户简报：直通延迟数据 + H7 首测数据 + UAC2 spike 初步结论（阻塞于 T7 硬件到货）
 
 ## 10. 需要澄清时问什么
 
