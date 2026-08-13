@@ -26,6 +26,7 @@ add_executable(namfx_tests
     ts808_test.cpp
     klon_test.cpp
     ocd_test.cpp
+    ota_comp_test.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)

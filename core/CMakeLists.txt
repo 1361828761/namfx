@@ -9,6 +9,7 @@ add_library(namfx_core STATIC
     modules/dsp/ts808.cpp
     modules/dsp/klon.cpp
     modules/dsp/ocd.cpp
+    modules/dsp/ota_comp.cpp
     preset/preset_model.cpp
     preset/preset_io.cpp
     preset/migration.cpp

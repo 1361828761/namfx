@@ -4,6 +4,7 @@
 #include "modules/dsp/ts808.h"
 #include "modules/dsp/klon.h"
 #include "modules/dsp/ocd.h"
+#include "modules/dsp/ota_comp.h"
 #include "modules/module_registry.h"
 #include "preset/preset_io.h"
 
@@ -230,6 +231,7 @@ int main(int argc, char** argv)
     namfx::registerTs808(*registry);
     namfx::registerTransparent(*registry);
     namfx::registerMosfetOd(*registry);
+    namfx::registerOtaComp(*registry);
 
     namfx::preset::LoadReport report;
     namfx::preset::Preset preset = namfx::preset::loadPreset(

@@ -5,6 +5,7 @@
 #include "modules/dsp/ts808.h"
 #include "modules/dsp/klon.h"
 #include "modules/dsp/ocd.h"
+#include "modules/dsp/ota_comp.h"
 #include "modules/module_base.h"
 #include "modules/module_registry.h"
 
@@ -39,6 +40,7 @@ inline std::shared_ptr<const namfx::ModuleRegistry> makeRegistry()
     namfx::registerTs808(*registry);
     namfx::registerTransparent(*registry);
     namfx::registerMosfetOd(*registry);
+    namfx::registerOtaComp(*registry);
     registry->registerModule("stereo.passthrough", "pedal", {},
                              [] { return std::make_unique<StereoPassthroughModule>(); });
     return registry;
