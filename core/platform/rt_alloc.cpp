@@ -3,8 +3,38 @@
 #include <cstdlib>
 #include <new>
 
+#ifdef _WIN32
+#include <malloc.h>
+#endif
+
 namespace namfx {
 namespace rt {
+
+namespace {
+
+void* aligned_allocate(std::size_t size, std::size_t alignment)
+{
+#ifdef _WIN32
+    return _aligned_malloc(size, alignment);
+#else
+    void* p = nullptr;
+    if (posix_memalign(&p, alignment, size) != 0) {
+        return nullptr;
+    }
+    return p;
+#endif
+}
+
+void aligned_deallocate(void* p) noexcept
+{
+#ifdef _WIN32
+    _aligned_free(p);
+#else
+    std::free(p);
+#endif
+}
+
+} // namespace
 
 std::atomic<std::uint64_t> AllocCounter::total{0};
 thread_local bool AllocCounter::in_audio_callback = false;
@@ -86,22 +116,34 @@ void* operator new[](std::size_t size, const std::nothrow_t&) noexcept
     return std::malloc(size);
 }
 
-void* operator new(std::size_t size, std::align_val_t)
+void* operator new(std::size_t size, std::align_val_t alignment)
 {
     namfx::rt::AllocCounter::record_allocation();
-    if (void* p = std::malloc(size)) {
+    if (void* p = namfx::rt::aligned_allocate(size, static_cast<std::size_t>(alignment))) {
         return p;
     }
     throw std::bad_alloc();
 }
 
-void* operator new[](std::size_t size, std::align_val_t)
+void* operator new[](std::size_t size, std::align_val_t alignment)
 {
     namfx::rt::AllocCounter::record_allocation();
-    if (void* p = std::malloc(size)) {
+    if (void* p = namfx::rt::aligned_allocate(size, static_cast<std::size_t>(alignment))) {
         return p;
     }
     throw std::bad_alloc();
+}
+
+void* operator new(std::size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept
+{
+    namfx::rt::AllocCounter::record_allocation();
+    return namfx::rt::aligned_allocate(size, static_cast<std::size_t>(alignment));
+}
+
+void* operator new[](std::size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept
+{
+    namfx::rt::AllocCounter::record_allocation();
+    return namfx::rt::aligned_allocate(size, static_cast<std::size_t>(alignment));
 }
 
 void operator delete(void* p) noexcept
@@ -146,22 +188,42 @@ void operator delete[](void* p, std::size_t, const std::nothrow_t&) noexcept
 
 void operator delete(void* p, std::align_val_t) noexcept
 {
-    std::free(p);
+    namfx::rt::aligned_deallocate(p);
 }
 
 void operator delete[](void* p, std::align_val_t) noexcept
 {
-    std::free(p);
+    namfx::rt::aligned_deallocate(p);
 }
 
 void operator delete(void* p, std::size_t, std::align_val_t) noexcept
 {
-    std::free(p);
+    namfx::rt::aligned_deallocate(p);
 }
 
 void operator delete[](void* p, std::size_t, std::align_val_t) noexcept
 {
-    std::free(p);
+    namfx::rt::aligned_deallocate(p);
+}
+
+void operator delete(void* p, std::align_val_t, const std::nothrow_t&) noexcept
+{
+    namfx::rt::aligned_deallocate(p);
+}
+
+void operator delete[](void* p, std::align_val_t, const std::nothrow_t&) noexcept
+{
+    namfx::rt::aligned_deallocate(p);
+}
+
+void operator delete(void* p, std::size_t, std::align_val_t, const std::nothrow_t&) noexcept
+{
+    namfx::rt::aligned_deallocate(p);
+}
+
+void operator delete[](void* p, std::size_t, std::align_val_t, const std::nothrow_t&) noexcept
+{
+    namfx::rt::aligned_deallocate(p);
 }
 
 #endif // NAMFX_RT_ALLOC_ENABLED
