@@ -10,6 +10,8 @@
 namespace namfx {
 namespace rt {
 
+#ifdef NAMFX_RT_ALLOC_ENABLED
+
 namespace {
 
 void* aligned_allocate(std::size_t size, std::size_t alignment)
@@ -35,6 +37,8 @@ void aligned_deallocate(void* p) noexcept
 }
 
 } // namespace
+
+#endif // NAMFX_RT_ALLOC_ENABLED
 
 std::atomic<std::uint64_t> AllocCounter::total{0};
 thread_local bool AllocCounter::in_audio_callback = false;
