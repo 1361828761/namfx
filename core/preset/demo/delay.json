@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "name": "Analog Delay",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "dly.dm2",
+      "params": { "time": 0.45, "feedback": 0.5, "level": 0.45 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}

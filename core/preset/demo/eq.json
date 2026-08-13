@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "name": "Graphic EQ",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "eq.ge7",
+      "params": {
+        "band100": 0.55,
+        "band200": 0.55,
+        "band400": 0.52,
+        "band800": 0.5,
+        "band1600": 0.45,
+        "band3200": 0.42,
+        "band6400": 0.4,
+        "level": 0.5
+      },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}

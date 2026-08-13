@@ -5,6 +5,7 @@ add_executable(namfx_render
 target_link_libraries(namfx_render PRIVATE
     namfx_core
     namfx_warnings
+    wavedigitalfilters
 )
 
 add_test(NAME namfx_render_demo

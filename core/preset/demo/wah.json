@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "name": "Wah",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "mod.wah",
+      "params": { "position": 0.55, "resonance": 0.6, "level": 0.5 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}
