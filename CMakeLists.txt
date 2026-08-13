@@ -39,7 +39,7 @@ if(NOT WaveDigitalFilters_POPULATED)
     FetchContent_Populate(WaveDigitalFilters)
 endif()
 add_library(wavedigitalfilters INTERFACE)
-target_include_directories(wavedigitalfilters INTERFACE ${wavedigitalfilters_SOURCE_DIR})
+target_include_directories(wavedigitalfilters INTERFACE ${wavedigitalfilters_SOURCE_DIR}/modules/chowdsp_wdf/include)
 
 add_subdirectory(core)
 

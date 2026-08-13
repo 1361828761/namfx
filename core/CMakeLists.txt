@@ -6,6 +6,7 @@ add_library(namfx_core STATIC
     modules/module_registry.cpp
     modules/dsp/gain.cpp
     modules/dsp/tone.cpp
+    modules/dsp/ts808.cpp
     preset/preset_model.cpp
     preset/preset_io.cpp
     preset/migration.cpp
@@ -23,4 +24,4 @@ if(MSVC)
     target_compile_definitions(namfx_core PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
-target_link_libraries(namfx_core PUBLIC namfx_warnings PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(namfx_core PUBLIC namfx_warnings wavedigitalfilters PRIVATE nlohmann_json::nlohmann_json)

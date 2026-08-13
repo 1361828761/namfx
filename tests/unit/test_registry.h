@@ -2,6 +2,7 @@
 
 #include "modules/dsp/gain.h"
 #include "modules/dsp/tone.h"
+#include "modules/dsp/ts808.h"
 #include "modules/module_base.h"
 #include "modules/module_registry.h"
 
@@ -33,6 +34,7 @@ inline std::shared_ptr<const namfx::ModuleRegistry> makeRegistry()
     auto registry = std::make_shared<namfx::ModuleRegistry>();
     namfx::registerGain(*registry);
     namfx::registerTone(*registry);
+    namfx::registerTs808(*registry);
     registry->registerModule("stereo.passthrough", "pedal", {},
                              [] { return std::make_unique<StereoPassthroughModule>(); });
     return registry;

@@ -1,6 +1,7 @@
 #include "audio/chain.h"
 #include "modules/dsp/gain.h"
 #include "modules/dsp/tone.h"
+#include "modules/dsp/ts808.h"
 #include "modules/module_registry.h"
 #include "preset/preset_io.h"
 
@@ -98,6 +99,7 @@ int main(int argc, char** argv)
     auto registry = std::make_shared<namfx::ModuleRegistry>();
     namfx::registerGain(*registry);
     namfx::registerTone(*registry);
+    namfx::registerTs808(*registry);
 
     namfx::preset::LoadReport report;
     namfx::preset::Preset preset = namfx::preset::loadPreset(
