@@ -18,6 +18,16 @@ struct AllocCounter {
 
     static void record_allocation() noexcept;
     static void reset_violation() noexcept;
+
+#ifdef NAMFX_RT_ALLOC_ENABLED
+    // test-only OOM failpoint: armed with N, the Nth subsequent allocation
+    // fails (operator new throws bad_alloc / nothrow forms return nullptr)
+    static void armOomFailpoint(std::uint64_t afterN) noexcept;
+    static void disarmOomFailpoint() noexcept;
+    static bool shouldFailAllocation() noexcept;
+    static void enableFailLog(bool on) noexcept;
+    static void logFail(const char* kind, std::size_t size) noexcept;
+#endif
 };
 
 class ScopedAllocGuard {
