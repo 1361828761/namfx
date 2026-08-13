@@ -28,6 +28,7 @@ add_executable(namfx_tests
     tape_delay_test.cpp
     spring_reverb_test.cpp
     pitch_shifter_test.cpp
+    octave_test.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)

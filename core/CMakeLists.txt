@@ -20,6 +20,7 @@ add_library(namfx_core STATIC
     modules/dsp/tape_delay.cpp
     modules/dsp/spring_reverb.cpp
     modules/dsp/pitch_shifter.cpp
+    modules/dsp/octave.cpp
     preset/preset_model.cpp
     preset/preset_io.cpp
     preset/migration.cpp

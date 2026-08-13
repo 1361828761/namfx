@@ -16,6 +16,7 @@
 #include "modules/dsp/tape_delay.h"
 #include "modules/dsp/spring_reverb.h"
 #include "modules/dsp/pitch_shifter.h"
+#include "modules/dsp/octave.h"
 #include "modules/module_base.h"
 #include "modules/module_registry.h"
 
@@ -61,6 +62,7 @@ inline std::shared_ptr<const namfx::ModuleRegistry> makeRegistry()
     namfx::registerTapeDelay(*registry);
     namfx::registerSpringReverb(*registry);
     namfx::registerPitchShifter(*registry);
+    namfx::registerOctave(*registry);
     registry->registerModule("stereo.passthrough", "pedal", {},
                              [] { return std::make_unique<StereoPassthroughModule>(); });
     return registry;
