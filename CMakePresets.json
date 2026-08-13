@@ -40,16 +40,16 @@
     {
       "name": "ci-win-debug",
       "displayName": "Debug (Windows CI)",
-      "description": "Debug build on GitHub windows-latest (VS 2022)",
-      "generator": "Visual Studio 17 2022",
+      "description": "Debug build on GitHub windows-latest (VS 2026)",
+      "generator": "Visual Studio 18 2026",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/ci-win-debug"
     },
     {
       "name": "ci-win-release",
       "displayName": "Release (Windows CI)",
-      "description": "Release build on GitHub windows-latest (VS 2022)",
-      "generator": "Visual Studio 17 2022",
+      "description": "Release build on GitHub windows-latest (VS 2026)",
+      "generator": "Visual Studio 18 2026",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/ci-win-release"
     }
