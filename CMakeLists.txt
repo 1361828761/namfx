@@ -27,6 +27,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+if(NAMFX_BUILD_TESTS)
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.8.0
+        GIT_SHALLOW TRUE
+        UPDATE_DISCONNECTED TRUE
+    )
+    FetchContent_MakeAvailable(Catch2)
+endif()
+
 FetchContent_Declare(
     WaveDigitalFilters
     GIT_REPOSITORY https://github.com/jatinchowdhury18/WaveDigitalFilters.git
@@ -45,6 +56,8 @@ add_subdirectory(core)
 
 if(NAMFX_BUILD_TESTS)
     add_subdirectory(tests/unit)
+    add_subdirectory(tests/regression)
+    add_subdirectory(tests/fuzz)
 endif()
 
 if(NAMFX_BUILD_TOOLS)
