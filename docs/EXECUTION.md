@@ -3,7 +3,7 @@
 > 这是本项目的**执行文档**。无论你是新工程师还是新 AI 模型，**从这里开始**。
 > 读完本文件即可开始执行当前任务；需要"为什么"时查阅 `docs/PLAN.md`；术语用根目录 `CONTEXT.md`；推迟项在 `TODOS.md`。
 >
-> 状态：计划 **APPROVED（v0.8：#109 RK3308 改判 + #110 名单块复刻 + #111 GPL-3.0）**，当前任务 = **M2 第一批：TS808 风格过载（电路级 WDF）**，见 §9。M1 软件部分已完成；M1 硬件验收项（RK3308 交叉编译 + UAC2 spike ≥8h）待用户下单板子。
+> 状态：计划 **APPROVED（v0.8：#109 RK3308 改判 + #110 名单块复刻 + #111 GPL-3.0）**，当前任务 = **M2 DSP 库（进行中）**，见 §9。M0 ✅、M1 软件部分 ✅（硬件验收项待板子）；**M2 已交付 14 个 DSP 模块**（4 个已提交 + 10 个工作区待 commit），剩余 = 音高家族（八度/whammy/和声器）+ Hall 混响。
 
 ---
 
@@ -118,13 +118,13 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
   - 项目已设 `UPDATE_DISCONNECTED TRUE`；CI（GitHub Actions）网络正常不受影响
 - **WaveDigitalFilters 集成方式**：header-only INTERFACE target（跳过其 CMakeLists 的 JUCE 示例），固定 commit `f3917749`，仅 `core/modules/dsp/` 电路建模路径可用（红线 2 豁免 #111）
 
-## 8. 里程碑总览（当前 = M1 软件完成，M2 待启动）
+## 8. 里程碑总览（当前 = M2 DSP 库进行中）
 
 | 里程碑 | 内容 | 验证 | 预估 |
 |---|---|---|---|
 | **M0（已完成）** | 骨架：git + monorepo + CMake + CI + 实时安全框架 + RK3308 ev 板采购 + UAC2 spike 启动 + 生态调研 | 音频直通无爆音；回调分配计数器生效 | 2-3 周 |
-| M1 | 音色链核心 + 预设存取（nlohmann 豁免）+ 迁移 + 备份 + **RK3308 Linux aarch64 交叉编译（原样编译）** + UAC2 spike ≥8h | **全 DSP 演示链出声**（NAM+IR 出声验收移 M4）；软件部分已完成，硬件验收项待板 | 3.5-4.5 周 |
-| M2 | DSP 库（**名单块复刻 #110** + 音高家族单音） | 单元+回归+参数扫描 | 8-12 周 |
+| M1 | 音色链核心 + 预设存取（nlohmann 豁免）+ 迁移 + 备份 + **RK3308 Linux aarch64 交叉编译（原样编译）** + UAC2 spike ≥8h | **全 DSP 演示链出声**（NAM+IR 出声验收移 M4）；**软件部分 ✅ 已完成，硬件验收项 ⏳ 待板** | 3.5-4.5 周 |
+| **M2（进行中）** | DSP 库（**名单块复刻 #110** + 音高家族单音） | 单元+回归+参数扫描 | 8-12 周 |
 | M3 | IR 引擎（UPOLS + 重采样） | 误差 < -100dB | 2-3 周 |
 | M4 | NAM 集成 + A2 bake-off（定主力芯片） | .nam 出声；双端一致 | 3-4 周 |
 | M5a/b/c | 桌面编辑器（+导出/导入+30+ 演示预设）/ 场景+输出 / 调音器+MIDI+WASAPI+演出基础 | <5ms（64 样本档）；场景无爆音 | 10-15 周 |
@@ -134,23 +134,27 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 
 砍序（超预算时）：M8 → M7c OTA → M7b → M5c 部分。
 
-## 9. 当前任务：M2 第一批 — TS808 风格过载（电路级 WDF）
+## 9. 当前任务：M2 DSP 库（进行中）
 
-> 开工顺序：读本文档 §3-§7（环境/红线/坑）→ 读 `docs/research/ts808.md`（电路事实）→ 按下方步骤实现。
+> 开工顺序：读本文档 §3-§7（环境/红线/坑）→ 读 `docs/research/<模块>.md`（电路/算法事实）→ 按下方流程实现。
+> 每块流程 = 调研文档 → 模块+注册 → 测试（注册/行为/参数扫描/44.1+96k/rt_alloc）→ 演示预设 → debug+release ctest 全绿。
+> 动态状态源：`HANDOFF.md`（工作区待 commit 清单、验证基线、坑清单）。
 
-### M2-1 TS808 风格过载（~2-3 天）
-- [ ] `core/modules/dsp/wdf/` 封装 WaveDigitalFilters（已接入，仅此路径可用，红线 2 豁免 #111）
-- [ ] `ts808.h/.cpp`：信号链 = 输入缓冲 → 非反相运放削波级（反馈环 1N914 对管 WDF 子网，Zf=(51k+500k Drive)∥51pF）→ 音调（723Hz 低通 → 20k 电位器 → 220Ω+0.22µF，BLT 双二阶）→ 音量 → 输出；9V/4.5V 偏置；2× 过采样；参数 Drive/Tone/Level（元件值与系数见 `docs/research/ts808.md`）
-- [ ] 注册 `registerTs808(ModuleRegistry&)`，模块 ID 如 `od.ts808`（改名规避商标）
-- [ ] 测试：单元（削波特征/增益范围 12-118×/频响）+ **参数空间扫描**（Drive×Tone×Level 网格：输出有限/无 NaN/无爆音）+ rt_alloc guard
-- [ ] 演示预设 `core/preset/demo/` 增加 1 个 TS 风格链（与现有 gain/tone 混排）
-- [ ] 验证：debug+release ctest 全绿 → CI 4 job 全绿
+### M2-1 TS808 风格过载（✅ 已完成，commit 1f028bb）
+- [x] `core/modules/dsp/wdf/` 封装 WaveDigitalFilters（已接入，仅此路径可用，红线 2 豁免 #111）
+- [x] `ts808.h/.cpp`：信号链 = 输入缓冲 → 非反相运放削波级（反馈环 1N914 对管 WDF 子网，Zf=(51k+500k Drive)∥51pF）→ 音调（723Hz 低通 → 20k 电位器 → 220Ω+0.22µF，BLT 双二阶）→ 音量 → 输出；9V/4.5V 偏置；2× 过采样；参数 Drive/Tone/Level（元件值与系数见 `docs/research/ts808.md`）
+- [x] 注册 `registerTs808(ModuleRegistry&)`，模块 ID `od.ts808`（改名规避商标）
+- [x] 测试：单元（削波特征/增益范围 12-118×/频响）+ **参数空间扫描**（Drive×Tone×Level 网格：输出有限/无 NaN/无爆音）+ rt_alloc guard
+- [x] 演示预设 `core/preset/demo/ts_drive.json`
+- [x] 验证：debug+release ctest 全绿 → CI 4 job 全绿
 
-### M2-2 后续（每块同法，见 PLAN §6 映射表）
-过载家族（Klon/OCD 风格）→ 压缩（Dyna Comp 风格）→ 调制（CE-2/Phase 90/BF-2/Crybaby）→ 延迟（DM-2/Echoplex）→ 混响（弹簧/Hall）→ 门限（NS-2）→ 音高家族（移调核心 → 八度/whammy/和声器，算法路线）
+### M2-2 名单块复刻（进行中，每块同法，见 PLAN §6 映射表）
+**已完成并提交（4 模块）**：Klon 风格 ✅ `od.transparent` / OCD 风格 ✅ `od.mosfet` / Dyna Comp 风格 ✅ `comp.ota`（+ TS808 上会话提交）
+**已完成待 commit（10 模块，工作区）**：调制族 ✅ `mod.chorus`（CE-2 风格）/ `mod.flanger`（BF-2 风格，以 Electric Mistress 为建模基准）/ `mod.phaser`（Phase 90 风格）/ `mod.wah`（Crybaby 风格，position 为控制源钩子）；门限 ✅ `gate.ns2`；EQ ✅ `eq.ge7`；延迟族 ✅ `dly.dm2` / `dly.tape`（Echoplex 风格）；混响 ✅ `rvb.spring`（弹簧物理）；音高家族 ✅ `pitch.shift`（移调核心 v1，固定比率延迟线+交叉淡化）
+**剩余**：音高家族（八度 → whammy（依赖 M5 控制源）→ 和声器（需 YIN 检测，见 `docs/research/pitch.md`））+ Hall 混响（可后置）
 
 ### M2 验收
-单元+回归+参数空间扫描通过；移调核心可演出级；每块模块 ID 全局唯一 + 预设逐槽校验。
+单元+回归+参数空间扫描通过；移调核心可演出级（v1 已交付，验收口径待用户确认）；每块模块 ID 全局唯一 + 预设逐槽校验。
 
 ---
 
@@ -203,7 +207,7 @@ M0 目标：**项目骨架站起来，验收 = 音频直通无爆音 + 回调分
 
 ### T9 收尾
 - [x] M0 验收三件套跑通：音频直通无爆音 ✓ 回调分配计数器生效 ✓ CI 双平台绿 ✓（run 31669327486，4/4 job success）
-- [ ] 更新 `docs/PLAN.md`（§13 里程碑表勾 M0）——留待 M1 启动简报时一并更新
+- [x] 更新 `docs/PLAN.md`（§13 里程碑表勾 M0）——2026-08-14 补勾（M0/M1 软件部分/M2 进度一并同步）
 - [ ] 进入 M1 前向用户简报：直通延迟数据 + RK3308 首测数据 + UAC2 spike 初步结论（阻塞于 T7 硬件到货）
 
 ## 11. 需要澄清时问什么
