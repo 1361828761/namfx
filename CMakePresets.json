@@ -1,0 +1,135 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "description": "Debug build",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/debug"
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "description": "Release build",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/release"
+    },
+    {
+      "name": "debug-linux",
+      "displayName": "Debug (Linux)",
+      "description": "Debug build on Linux",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/debug-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release-linux",
+      "displayName": "Release (Linux)",
+      "description": "Release build on Linux",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/release-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ci-win-debug",
+      "displayName": "Debug (Windows CI)",
+      "description": "Debug build on GitHub windows-latest (VS 2022)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/ci-win-debug"
+    },
+    {
+      "name": "ci-win-release",
+      "displayName": "Release (Windows CI)",
+      "description": "Release build on GitHub windows-latest (VS 2022)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build/ci-win-release"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release"
+    },
+    {
+      "name": "debug-linux",
+      "configurePreset": "debug-linux"
+    },
+    {
+      "name": "release-linux",
+      "configurePreset": "release-linux"
+    },
+    {
+      "name": "ci-win-debug",
+      "configurePreset": "ci-win-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "ci-win-release",
+      "configurePreset": "ci-win-release",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug-linux",
+      "configurePreset": "debug-linux",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-linux",
+      "configurePreset": "release-linux",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-win-debug",
+      "configurePreset": "ci-win-debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-win-release",
+      "configurePreset": "ci-win-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

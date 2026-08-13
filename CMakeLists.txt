@@ -1,0 +1,28 @@
+cmake_minimum_required(VERSION 3.24)
+project(namfx LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+option(NAMFX_BUILD_TESTS "Build unit tests" ON)
+option(NAMFX_BUILD_TOOLS "Build tools" ON)
+
+enable_testing()
+
+add_library(namfx_warnings INTERFACE)
+if(MSVC)
+    target_compile_options(namfx_warnings INTERFACE /W4 /WX)
+else()
+    target_compile_options(namfx_warnings INTERFACE -Wall -Wextra -Werror)
+endif()
+
+add_subdirectory(core)
+
+if(NAMFX_BUILD_TESTS)
+    add_subdirectory(tests/unit)
+endif()
+
+if(NAMFX_BUILD_TOOLS)
+    add_subdirectory(tools/latency)
+endif()

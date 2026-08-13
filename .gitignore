@@ -1,0 +1,7 @@
+build/
+.vs/
+.vscode/
+CMakeUserPresets.json
+*.user
+out/
+cmake-build-*/
