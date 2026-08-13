@@ -1,6 +1,8 @@
 add_library(namfx_core STATIC
     platform/rt_alloc.cpp
     audio/audio_graph.cpp
+    audio/param_store.cpp
+    modules/module_registry.cpp
 )
 
 target_include_directories(namfx_core PUBLIC

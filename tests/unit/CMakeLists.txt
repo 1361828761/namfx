@@ -11,6 +11,11 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(namfx_tests
     rt_alloc_test.cpp
     audio_graph_test.cpp
+    registry_test.cpp
+    param_spec_test.cpp
+    spsc_queue_test.cpp
+    param_store_test.cpp
+    rt_safety_test.cpp
 )
 
 target_link_libraries(namfx_tests PRIVATE
