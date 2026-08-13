@@ -3,7 +3,7 @@
 > 这是本项目的**执行文档**。无论你是新工程师还是新 AI 模型，**从这里开始**。
 > 读完本文件即可开始执行当前任务；需要"为什么"时查阅 `docs/PLAN.md`；术语用根目录 `CONTEXT.md`；推迟项在 `TODOS.md`。
 >
-> 状态：计划 **APPROVED（v0.7 + #109 RK3308 改判）**，当前任务 = **M1 软件部分已完成**（音色链核心 + 预设系统 + 备份 + 渲染工具，2026-08-13）；M1 剩余验收项依赖硬件（T7：RK3308 Linux aarch64 交叉编译 + UAC2 spike ≥8h，待用户下单板子）。
+> 状态：计划 **APPROVED（v0.8：#109 RK3308 改判 + #110 名单块复刻 + #111 GPL-3.0）**，当前任务 = **M2 第一批：TS808 风格过载（电路级 WDF）**，见 §9。M1 软件部分已完成；M1 硬件验收项（RK3308 交叉编译 + UAC2 spike ≥8h）待用户下单板子。
 
 ---
 
@@ -16,7 +16,7 @@
 | 文件 | 作用 | 何时读 |
 |---|---|---|
 | `docs/EXECUTION.md`（本文件） | 怎么干、当前任务、红线、坑 | **开始干活前必读** |
-| `docs/PLAN.md` | 全部决策 + 理由 + 61 条决策审计 | 需要"为什么"时 |
+| `docs/PLAN.md` | 全部决策 + 理由 + 111 条决策审计（#1-111） | 需要"为什么"时 |
 | `CONTEXT.md` | 术语规范（22 词） | 写代码/文档前查词 |
 | `TODOS.md` | 推迟的工作 | 本里程碑完成后 |
 
@@ -25,7 +25,7 @@
 | 项 | 要求 |
 |---|---|
 | 编译器 | MSVC 2019+（Windows）/ GCC 9+ 或 Clang（Linux/macOS） |
-| CMake | ≥ 3.24（用 `CMakePresets.json`） |
+| CMake | ≥ 3.24（用 `CMakePresets.json`）。**本机 cmake 不在 PATH**：需在 VS 2026 Developer PowerShell 中执行，或全路径 `D:\study\vc\vsiualstudio\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe` |
 | C++ 标准 | **C++17**（core 必须保持 17，不得升级） |
 | 测试框架 | Catch2 v3（`tests/unit/` 用 FetchContent 引入，仅测试目标依赖） |
 | 构建系统 | CMake + 各平台原生生成器（VS/Unix Makefiles/Ninja） |
@@ -55,7 +55,7 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 | D8 | A/B = 临时对比，不持久化不入 undo；undo/redo 是**壳侧概念**（桌面壳与 Web 壳实现，引擎不背，LCD 无） | 语义清晰 |
 | D9 | 控制源统一抽象（踏板/MIDI CC/Web UI/桌面 UI/脚踩）+ 多源仲裁；引擎是参数权威 | 并发不打架 |
 | D10 | 模块注册表：模块ID 全局唯一键，类别（pedal/amp/cab）是属性 | 防静默失败 |
-| D11 | 三技术：NAM（官方 Core，A1/A2 slimmable）/ IR（UPOLS 分区卷积）/ DSP（通用模块优先） | 互补覆盖 |
+| D11 | 三技术：NAM（官方 Core，A1/A2 slimmable）/ IR（UPOLS 分区卷积）/ DSP（**名单块数字复刻**，见 D12） | 互补覆盖 |
 | D12 | DSP 库 = **名单块数字复刻**（#110）：非线性音色→电路级 WDF（TS808 先行→Klon/OCD），时间/滤波特征→行为级复现（CE-2/Phase 90/DM-2/Echoplex 等）+ 音高家族（单音假设） | 用户拍板：复刻名块路线 |
 | D13 | 性能分级 Full/Limited/Minimal + 运行时实测；**低档平台 slimmable A2 文件经显式确认以 Lite 档加载**（非 slimmable 才拒绝提示换 A1） | 用户裁决：音色不变幻 |
 | D14 | 嵌入式：主力档 = RK3308/RK3328/RK3566 候选（M4 bake-off 定）；低端档 = STM32H7；多芯片 DSP 方案否决 | ARM 路线 + 引擎复用 |
@@ -82,7 +82,7 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 |---|---|---|
 | NAM 架构 | Core 加载层兼容 A1/A2/LSTM 全部 .nam；**A2 是 slimmable**：同一文件含 3ch(Lite)/8ch(Full) 子模型，运行时切换 | 性能档位可切 A2 档 |
 | NAM 量化 | 官方无 INT8/FP16 路径，权重固定 float32 | 不要做量化探针 |
-| NAM 许可 | Core/Plugin/Trainer 全 MIT；依赖 Eigen(MPL2)/nlohmann(MIT)/AudioDSPTools(MIT)，无 RTNeural | 闭源可内嵌 |
+| NAM 许可 | Core/Plugin/Trainer 全 MIT；依赖 Eigen(MPL2)/nlohmann(MIT)/AudioDSPTools(MIT)，无 RTNeural | NAM MIT 与本项目 GPL-3.0（#111）兼容；"闭源内嵌"结论随 #111 作废 |
 | NAM 算力 | A2-Full:Lite ≈7-15×；A2-Lite 在 A35/A53 实时性"大概率可行但未实测" | M4 必须 bake-off |
 | RK3308 | 4× Cortex-A35 @1.3GHz（主线内核默认 1.008GHz）；内置 codec = **8ch ADC + 2ch DAC**；8ch I2S 回放侧仅 2ch | 输入复用内置 ADC；输出需外置 I2S DAC |
 | RK3328 | 4× Cortex-A53 @1.5GHz，约 1.5-2× RK3308 算力；带 GPU/DDR4/USB3 | 性能备选 |
@@ -112,14 +112,19 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 - **LCD 中文**：字符型 LCD 无法渲染 CJK；低端档用图形点阵屏 + 中文字库（8 个汉字 ≥128px 宽，选型时看分辨率）。
 - **性能仪表瞬态**：场景预加载瞬态读数忽略，防演出误告警。
 - **CC 7-bit 量化感**：用 14-bit（MSB/LSB）+ 每源每参数平滑（CC 10-20ms / 踏板 1-3ms / whammy 专用低延迟通道）。
+- **本机网络（Windows）**：GitHub 直连曾被重置、代理（clash 127.0.0.1:7897）限速 ~150KB/s → FetchContent 克隆可能卡死。对策：
+  - git 全局代理配置在 127.0.0.1:7897；**勿中途 kill configure**（僵尸 git 锁死 `_deps` 目录，出现时清进程 + 删 `*.lock`）
+  - 依赖已本地化：configure 时带 `-D FETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=D:/study/project/nam/build/nlohmann-v3.11.3 -D FETCHCONTENT_SOURCE_DIR_WAVEDIGITALFILTERS=D:/study/project/nam/build/debug/_deps/wavedigitalfilters-src`（已持久化在 cache；**新建 build 目录需重传**）
+  - 项目已设 `UPDATE_DISCONNECTED TRUE`；CI（GitHub Actions）网络正常不受影响
+- **WaveDigitalFilters 集成方式**：header-only INTERFACE target（跳过其 CMakeLists 的 JUCE 示例），固定 commit `f3917749`，仅 `core/modules/dsp/` 电路建模路径可用（红线 2 豁免 #111）
 
-## 8. 里程碑总览（当前 = M0）
+## 8. 里程碑总览（当前 = M1 软件完成，M2 待启动）
 
 | 里程碑 | 内容 | 验证 | 预估 |
 |---|---|---|---|
-| **M0（当前）** | 骨架：git + monorepo + CMake + CI + 实时安全框架 + H7 采购 + UAC2 spike 启动 + 生态调研 | 音频直通无爆音；回调分配计数器生效 | 2-3 周 |
-| M1 | 音色链核心 + 预设存取（nlohmann 豁免）+ 迁移 + 备份 + **RK3308 Linux aarch64 交叉编译（原样编译）** + UAC2 spike ≥8h | **全 DSP 演示链出声**（NAM+IR 出声验收移 M4） | 3.5-4.5 周 |
-| M2 | DSP 库（**名单块复刻** + 音高家族单音） | 单元+回归+参数扫描 | 8-12 周 |
+| **M0（已完成）** | 骨架：git + monorepo + CMake + CI + 实时安全框架 + RK3308 ev 板采购 + UAC2 spike 启动 + 生态调研 | 音频直通无爆音；回调分配计数器生效 | 2-3 周 |
+| M1 | 音色链核心 + 预设存取（nlohmann 豁免）+ 迁移 + 备份 + **RK3308 Linux aarch64 交叉编译（原样编译）** + UAC2 spike ≥8h | **全 DSP 演示链出声**（NAM+IR 出声验收移 M4）；软件部分已完成，硬件验收项待板 | 3.5-4.5 周 |
+| M2 | DSP 库（**名单块复刻 #110** + 音高家族单音） | 单元+回归+参数扫描 | 8-12 周 |
 | M3 | IR 引擎（UPOLS + 重采样） | 误差 < -100dB | 2-3 周 |
 | M4 | NAM 集成 + A2 bake-off（定主力芯片） | .nam 出声；双端一致 | 3-4 周 |
 | M5a/b/c | 桌面编辑器（+导出/导入+30+ 演示预设）/ 场景+输出 / 调音器+MIDI+WASAPI+演出基础 | <5ms（64 样本档）；场景无爆音 | 10-15 周 |
@@ -129,7 +134,27 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 
 砍序（超预算时）：M8 → M7c OTA → M7b → M5c 部分。
 
-## 9. 当前任务：M0 执行清单（开工就用这个）
+## 9. 当前任务：M2 第一批 — TS808 风格过载（电路级 WDF）
+
+> 开工顺序：读本文档 §3-§7（环境/红线/坑）→ 读 `docs/research/ts808.md`（电路事实）→ 按下方步骤实现。
+
+### M2-1 TS808 风格过载（~2-3 天）
+- [ ] `core/modules/dsp/wdf/` 封装 WaveDigitalFilters（已接入，仅此路径可用，红线 2 豁免 #111）
+- [ ] `ts808.h/.cpp`：信号链 = 输入缓冲 → 非反相运放削波级（反馈环 1N914 对管 WDF 子网，Zf=(51k+500k Drive)∥51pF）→ 音调（723Hz 低通 → 20k 电位器 → 220Ω+0.22µF，BLT 双二阶）→ 音量 → 输出；9V/4.5V 偏置；2× 过采样；参数 Drive/Tone/Level（元件值与系数见 `docs/research/ts808.md`）
+- [ ] 注册 `registerTs808(ModuleRegistry&)`，模块 ID 如 `od.ts808`（改名规避商标）
+- [ ] 测试：单元（削波特征/增益范围 12-118×/频响）+ **参数空间扫描**（Drive×Tone×Level 网格：输出有限/无 NaN/无爆音）+ rt_alloc guard
+- [ ] 演示预设 `core/preset/demo/` 增加 1 个 TS 风格链（与现有 gain/tone 混排）
+- [ ] 验证：debug+release ctest 全绿 → CI 4 job 全绿
+
+### M2-2 后续（每块同法，见 PLAN §6 映射表）
+过载家族（Klon/OCD 风格）→ 压缩（Dyna Comp 风格）→ 调制（CE-2/Phase 90/BF-2/Crybaby）→ 延迟（DM-2/Echoplex）→ 混响（弹簧/Hall）→ 门限（NS-2）→ 音高家族（移调核心 → 八度/whammy/和声器，算法路线）
+
+### M2 验收
+单元+回归+参数空间扫描通过；移调核心可演出级；每块模块 ID 全局唯一 + 预设逐槽校验。
+
+---
+
+## 10. M0 执行清单（已完成，留档）
 
 M0 目标：**项目骨架站起来，验收 = 音频直通无爆音 + 回调分配计数器生效**。预估 2-3 周。
 
@@ -179,16 +204,16 @@ M0 目标：**项目骨架站起来，验收 = 音频直通无爆音 + 回调分
 ### T9 收尾
 - [x] M0 验收三件套跑通：音频直通无爆音 ✓ 回调分配计数器生效 ✓ CI 双平台绿 ✓（run 31669327486，4/4 job success）
 - [ ] 更新 `docs/PLAN.md`（§13 里程碑表勾 M0）——留待 M1 启动简报时一并更新
-- [ ] 进入 M1 前向用户简报：直通延迟数据 + H7 首测数据 + UAC2 spike 初步结论（阻塞于 T7 硬件到货）
+- [ ] 进入 M1 前向用户简报：直通延迟数据 + RK3308 首测数据 + UAC2 spike 初步结论（阻塞于 T7 硬件到货）
 
-## 10. 需要澄清时问什么
+## 11. 需要澄清时问什么
 
 以下问题计划尚未定死，遇到时**问用户**（不要自己拍板）：
 
 1. 代码仓库托管位置（GitHub/Gitee/本地）与 CI 平台
 2. 项目名/产品名（代码暂用 `namfx`，可改）
 3. ~~STM32H7 具体开发板型号偏好~~ → 已定：RK3308 ev 板（#109，用户 2026-08-13 改判）
-4. 开源还是闭源（NAM 许可允许两者；影响 README/许可文件写法，不影响开发）
+4. ~~开源还是闭源~~ → 已定：**整体 GPL-3.0**（#111，2026-08-13 用户拍板；引入 WaveDigitalFilters，红线 2 修订）
 5. 中文市场定位是否需要正式市场文档（`docs/PLAN.md` §15）
 6. 桌面 I/O 设备管理 UI 形态——已闭合（#88：WASAPI 独占/共享切换 + 设备断连自动重连/回退共享，M5 交付）
 

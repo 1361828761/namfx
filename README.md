@@ -19,4 +19,8 @@ cmake --build --preset debug
 ctest --preset debug
 ```
 
-要求：CMake ≥ 3.24，C++17，MSVC 2019+（Windows）/ GCC 9+ 或 Clang（Linux/macOS）。
+要求：CMake ≥ 3.24，C++17，MSVC 2019+（Windows）/ GCC 9+ 或 Clang（Linux/macOS）。本机 Windows 需在 VS 2026 Developer PowerShell 中执行（cmake 不在 PATH）。
+
+## 许可
+
+**GPL-3.0**（整体开源，2026-08-13 决策 #111）。依赖：NAM Core（MIT）、nlohmann/json（MIT，预设加载路径）、WaveDigitalFilters（GPL-3.0，仅 core/modules/dsp/ 电路建模路径）。

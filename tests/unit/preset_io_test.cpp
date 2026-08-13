@@ -41,11 +41,6 @@ namfx::preset::Preset makePreset()
     return preset;
 }
 
-std::string strictJson(const std::string& inner)
-{
-    return inner;
-}
-
 } // namespace
 
 TEST_CASE("preset round trips through JSON")

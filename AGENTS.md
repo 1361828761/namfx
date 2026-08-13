@@ -10,7 +10,7 @@ namfx 执行环境的精简版速查。完整版见 `docs/EXECUTION.md`。
 | CMake | ≥ 3.24（用 `CMakePresets.json`，`cmake --preset <name>`） |
 | C++ 标准 | C++17（core 必须保持 17，不得升级） |
 | 测试框架 | Catch2 v3（`tests/unit/` 用 FetchContent 引入，仅测试目标依赖） |
-| core 依赖 | 音频路径零第三方运行时依赖（只允许 std::）；预设加载路径允许 header-only 豁免（nlohmann/json） |
+| core 依赖 | 音频路径零第三方运行时依赖（只允许 std::）；预设加载路径允许 header-only 豁免（nlohmann/json）；电路建模路径允许 WaveDigitalFilters（GPL-3.0，#111） |
 
 ## 工程红线（违反 = 返工）
 
