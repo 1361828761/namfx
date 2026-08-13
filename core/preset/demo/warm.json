@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "name": "Warm",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "tone",
+      "params": { "freq": 2500.0, "mode": 0.0 },
+      "bypass": false,
+      "mix": 1.0
+    },
+    {
+      "slot": 1,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "gain",
+      "params": { "gain": 2.0 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": [
+    {
+      "name": "Lead",
+      "overrides": [
+        {
+          "moduleId": "gain",
+          "bypass": false,
+          "params": { "gain": 8.0 }
+        }
+      ]
+    }
+  ]
+}

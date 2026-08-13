@@ -22,7 +22,13 @@ add_executable(namfx_tests
     graph_exchange_test.cpp
     preset_io_test.cpp
     migration_test.cpp
+    integration_test.cpp
 )
+
+file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)
+
+file(TO_CMAKE_PATH "${CMAKE_BINARY_DIR}/demo-presets" NAMFX_DEMO_DIR_CMAKE)
+target_compile_definitions(namfx_tests PRIVATE NAMFX_DEMO_DIR="${NAMFX_DEMO_DIR_CMAKE}")
 
 target_link_libraries(namfx_tests PRIVATE
     namfx_core

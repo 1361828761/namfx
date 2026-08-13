@@ -35,4 +35,5 @@ endif()
 
 if(NAMFX_BUILD_TOOLS)
     add_subdirectory(tools/latency)
+    add_subdirectory(tools/render)
 endif()

@@ -9,6 +9,8 @@ add_library(namfx_core STATIC
     preset/preset_model.cpp
     preset/preset_io.cpp
     preset/migration.cpp
+    preset/atomic_write.cpp
+    preset/backup.cpp
 )
 
 target_include_directories(namfx_core PUBLIC
@@ -16,5 +18,9 @@ target_include_directories(namfx_core PUBLIC
 )
 
 target_compile_features(namfx_core PUBLIC cxx_std_17)
+
+if(MSVC)
+    target_compile_definitions(namfx_core PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 
 target_link_libraries(namfx_core PUBLIC namfx_warnings PRIVATE nlohmann_json::nlohmann_json)
