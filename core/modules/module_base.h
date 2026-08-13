@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace namfx {
 
 enum class ChannelMode {
@@ -18,6 +20,12 @@ public:
     virtual void setSampleRate(double sampleRate) = 0;
     virtual void setMaxBlock(int maxBlockSize) = 0;
     virtual ChannelMode channelMode() const = 0;
+
+    virtual void setParameter(const std::string& id, float value)
+    {
+        (void)id;
+        (void)value;
+    }
 };
 
 } // namespace namfx

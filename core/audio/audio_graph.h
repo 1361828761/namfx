@@ -1,25 +1,34 @@
 #pragma once
 
 #include <atomic>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
+#include <memory>
 
 namespace namfx {
+
+class ModuleRegistry;
+
 namespace audio {
+
+class Chain;
 
 class AudioGraph {
 public:
-    void processBlock(const float* in, float* out, std::size_t numSamples) noexcept;
+    AudioGraph();
+    ~AudioGraph();
+    AudioGraph(const AudioGraph&) = delete;
+    AudioGraph& operator=(const AudioGraph&) = delete;
 
-    void commit() noexcept;
-    void swap() noexcept;
+    void setRegistry(std::shared_ptr<const ModuleRegistry> registry);
 
-    std::uint32_t front() const noexcept { return front_.load(std::memory_order_acquire); }
+    void requestSwap(std::unique_ptr<Chain> next);
+    void processBlock(const float* inL, const float* inR, float* outL, float* outR, int n);
+    bool hasPending() const;
 
 private:
-    std::atomic<std::uint32_t> front_{0};
-    std::atomic<bool> swap_requested_{false};
+    std::shared_ptr<const ModuleRegistry> registry_;
+    std::atomic<Chain*> pending_{nullptr};
+    std::unique_ptr<Chain> slots_[2];
+    std::atomic<int> current_{0};
 };
 
 } // namespace audio

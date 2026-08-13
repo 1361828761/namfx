@@ -7,24 +7,27 @@
 
 int main()
 {
-    constexpr std::size_t kSamples = 64;
+    constexpr int kSamples = 64;
     constexpr std::size_t kWarmup = 100;
     constexpr std::size_t kIterations = 1000;
     constexpr long long kThresholdNs = 500000;
 
-    std::vector<float> in(kSamples, 0.0f);
-    std::vector<float> out(kSamples, 0.0f);
-    in[0] = 1.0f;
+    std::vector<float> inL(static_cast<std::size_t>(kSamples), 0.0f);
+    std::vector<float> inR(static_cast<std::size_t>(kSamples), 0.0f);
+    std::vector<float> outL(static_cast<std::size_t>(kSamples), 0.0f);
+    std::vector<float> outR(static_cast<std::size_t>(kSamples), 0.0f);
+    inL[0] = 1.0f;
+    inR[0] = 1.0f;
 
     namfx::audio::AudioGraph graph;
 
     for (std::size_t i = 0; i < kWarmup; ++i) {
-        graph.processBlock(in.data(), out.data(), kSamples);
+        graph.processBlock(inL.data(), inR.data(), outL.data(), outR.data(), kSamples);
     }
 
     const auto t0 = std::chrono::steady_clock::now();
     for (std::size_t i = 0; i < kIterations; ++i) {
-        graph.processBlock(in.data(), out.data(), kSamples);
+        graph.processBlock(inL.data(), inR.data(), outL.data(), outR.data(), kSamples);
     }
     const auto t1 = std::chrono::steady_clock::now();
 
@@ -33,13 +36,9 @@ int main()
 
     std::printf("engine latency: %lld ns\n", ns);
 
-    if (out[0] != in[0]) {
-        std::printf("ERROR: passthrough mismatch\n");
-        return 1;
-    }
-    for (std::size_t i = 1; i < kSamples; ++i) {
-        if (out[i] != in[i]) {
-            std::printf("ERROR: passthrough mismatch at sample %zu\n", i);
+    for (int i = 0; i < kSamples; ++i) {
+        if (outL[i] != inL[i] || outR[i] != inR[i]) {
+            std::printf("ERROR: passthrough mismatch at sample %d\n", i);
             return 1;
         }
     }

@@ -16,6 +16,9 @@ add_executable(namfx_tests
     spsc_queue_test.cpp
     param_store_test.cpp
     rt_safety_test.cpp
+    chain_test.cpp
+    crossfade_test.cpp
+    graph_exchange_test.cpp
 )
 
 target_link_libraries(namfx_tests PRIVATE
