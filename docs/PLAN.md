@@ -39,7 +39,7 @@
 | DSP 范围 | 通用模块优先（门限/压缩/EQ/延迟/算法混响/调制）+ 音高家族（**单音假设**：八度/移调/whammy/和声器，移调核心优先）；WDF 电路级单块后置 |
 | NAM 架构兼容 | NAM Core 加载层兼容 A1/A2/LSTM 全部 .nam 文件（官方向后兼容承诺）；**A2 为 slimmable 架构**：同一文件内含 3ch（Lite）与 8ch（Full）子模型，运行时按档位切换；性能档位 = 控制加载架构 + A2 档位选择 |
 | 性能档位实现 | 低档平台：**slimmable A2 文件经用户显式确认后以 Lite 档加载**（保留"音色不在不知情时变化"原则）；非 slimmable 文件才拒绝并提示换 A1（v0.7 #64 裁决）；官方无 INT8/FP16 量化路径（.nam 权重固定 float32）——量化探针取消，改 A2 降档实测 |
-| NAM 许可 | Core/Plugin/Trainer 全 MIT，依赖栈（Eigen MPL2/nlohmann MIT/AudioDSPTools MIT）无 RTNeural 叠加；闭源商业内嵌允许，商用案例含 HeadRush/MOD Dwarf——原风险 5 解除 |
+| NAM 许可 | Core/Plugin/Trainer 全 MIT，依赖栈（Eigen MPL2/nlohmann MIT/AudioDSPTools MIT）无 RTNeural 叠加；**本项目整体 GPL-3.0（#111 用户拍板）**——闭源商业内嵌不再开放，纯开源路线；商用案例含 HeadRush/MOD Dwarf——原风险 5 解除 |
 | 嵌入式量产决策 | M0-M1 在 **RK3308** 上验证引擎（Linux 原样编译 + DSP+IR 实时性）；**M4 A2 bake-off（Full/Lite 档实测）**；M7a 后定量产档位 |
 | DIN MIDI | **砍掉**（v0.5 裁决）：USB-MIDI 覆盖 90% 场景，减少 M7 硬件调试面 |
 | 固件升级 | **v1 = rkdeveloptool 恢复烧写 + 单槽 bootcount 自动回滚**（1-1.5 周）；真 A/B 双镜像后置 v2（3-5 周自研活，非 v1） |
@@ -407,7 +407,7 @@ M0–M4 为基建阶段；M1 起即有"第一个声音"时刻；M1 起 H7 硬件
 - ~~音频 I/O 设备管理（多声卡选择、采样率切换策略）~~ → **已闭合（v0.7 #88/#107）**：WASAPI 独占/共享切换 + 设备断连恢复 UI，M5 交付
 - 预设共享/生态（社区分享格式、云同步）——差异化押注点，后续迭代（**预设导出/导入基础已归 M5a**，v0.7 #67）
 - 模块第三方扩展接口（M8 后考虑）
-- 软件分发策略（开源 vs 闭源——NAM Core 全 MIT，闭源内嵌无许可障碍，纯商业决策）
+- 软件分发策略（开源 vs 闭源——**#111 已闭合：整体 GPL-3.0 纯开源**）
 - 中文市场定位（本地化 UI、内容打法）——市场假设页补充
 - Web UI 信任模型落地形态（局域网信任 vs 基本认证，M7c 定，v0.7 #68）
 
@@ -716,6 +716,7 @@ VERDICT: APPROVED（v0.5）。二轮总修复 12 项，审计轨迹累计 52 条
 | 108 | Eng | 构建基建：嵌入式 preset+离线 vendoring 路径+CI 钉编译器版本 | Mechanical | P3 | 交叉编译离线机无法 configure；WError 跨版本漂移 | — |
 | 109 | HW | M0 起步板改 RK3308 ev 板（用户 2026-08-13 改判，原 #32 为 STM32H7） | User-confirmed（用户改判） | P3 | 一块 RK3308 同时服务 UAC2 spike（Linux 原生）+ M4 A2 bake-off + 主力档验证；内置 codec 直连音频路径；免 H7 裸机去 STL/单精度适配（低端档整体移至 M8 研究）；引擎复用 ~99% 而非 ~60% | STM32H7 起步 |
 | 110 | CEO/Eng | M2 DSP 库改**名单块数字复刻路线**（用户 2026-08-13 拍板）：非线性决定音色→电路级 WDF（TS808 先行），时间调制/滤波特征→行为级复现（CE-2/Phase 90/DM-2 等）；音高家族保持算法路线；命名全部改名规避商标；WDF 从 P2 提前入 M2 | User-confirmed | P2 | 用户原始诉求（DSP 复刻单块）+ 填补 M2 无过载模块缺口 + 产品差异化；社区 NAM 捕获无 DSP 版可用 | 通用模块优先（原 v0.5 方案） |
+| 111 | Legal/Eng | **项目整体翻转为 GPL-3.0**（用户 2026-08-13 拍板），引入 WaveDigitalFilters（GPL-3.0，固定 commit FetchContent）用于 DSP 电路建模；红线 2 修订：core 音频路径允许 WDF 库豁免（仅限 `core/modules/dsp/` 电路建模路径）；§15 分发策略闭合为"纯开源" | User-confirmed | P2 | 质量优先：Jatin Chowdhury WDF 库（ChowTape 同作者）非线性求解器成熟；MIT 自研收敛边界风险高 | 保持 MIT 自研（~150 行 WDF） |
 
 ### 第 4 轮用户裁决（Final Approval Gate，2026-08-13）
 

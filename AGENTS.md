@@ -15,7 +15,7 @@ namfx 执行环境的精简版速查。完整版见 `docs/EXECUTION.md`。
 ## 工程红线（违反 = 返工）
 
 1. 音频线程实时安全：回调内零堆分配 / 零锁 / 零 I/O / 零异常
-2. core 音频路径零第三方依赖；JUCE 只出现在 `desktop/`；SIMD 选项只允许出现在 `core/modules/nam/` 的 NAM 库 target
+2. core 音频路径零第三方依赖；**豁免两项**：nlohmann/json（仅 preset 加载路径）+ WaveDigitalFilters（GPL-3.0，仅 `core/modules/dsp/` 电路建模路径，#111）；JUCE 只出现在 `desktop/`；SIMD 选项只允许出现在 `core/modules/nam/` 的 NAM 库 target
 3. 图交换协议：所有音频图变更 = request → 后台加载 → 双缓冲原子交换；UI 线程直接改图 = 错误
 4. 模块 ID 全局唯一；预设加载逐槽显式校验并报错，不静默失败
 5. 引擎是参数权威：UI 只读镜像，经队列订阅引擎广播

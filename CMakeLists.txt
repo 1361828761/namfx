@@ -27,6 +27,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+FetchContent_Declare(
+    WaveDigitalFilters
+    GIT_REPOSITORY https://github.com/jatinchowdhury18/WaveDigitalFilters.git
+    GIT_TAG f391774967fa29aa595de6b594077167a9502765
+    GIT_SHALLOW TRUE
+    UPDATE_DISCONNECTED TRUE
+)
+FetchContent_GetProperties(WaveDigitalFilters)
+if(NOT WaveDigitalFilters_POPULATED)
+    FetchContent_Populate(WaveDigitalFilters)
+endif()
+add_library(wavedigitalfilters INTERFACE)
+target_include_directories(wavedigitalfilters INTERFACE ${wavedigitalfilters_SOURCE_DIR})
+
 add_subdirectory(core)
 
 if(NAMFX_BUILD_TESTS)

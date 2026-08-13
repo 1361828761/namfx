@@ -74,6 +74,7 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 | D27 | 现场状态记忆 = 变更后 debounce 保存（2-5s）+ 原子写协议 + CRC；断电窗口只 mute | "断电时保存"物理不可行 |
 | D28 | LCD 中文全端显示：图形点阵屏 + 中文字库（BOM +¥10-20、开发 +1-2 周） | 用户裁决（#82） |
 | D29 | 延迟分档：64 样本 = 5ms 目标档；128 样本 = 8ms 底线档（128 双缓冲已 5.33ms+） | 原表数学错一倍 |
+| D30 | **许可证：整体 GPL-3.0**（#111 用户拍板，原 MIT）；WDF 库豁免入 dsp 建模路径 | 质量优先，纯开源路线 |
 
 ## 5. 技术事实速查（已核验，不许重新查证）
 
@@ -91,7 +92,7 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 ## 6. 工程红线（违反 = 返工）
 
 1. **音频线程实时安全**：回调内零堆分配/零锁/零 I/O/零异常。参数走无锁 SPSC 队列 + 平滑。
-2. **core 音频路径零第三方依赖**（只允许 std::）；预设加载/JSON 序列化路径允许 header-only 豁免（nlohmann/json，D25）。JUCE 只出现在 `desktop/`。SIMD 编译选项只允许出现在 NAM 库 target（`core/modules/nam/`），core 本体不得含。
+2. **core 音频路径零第三方依赖**（只允许 std::）；预设加载/JSON 序列化路径允许 header-only 豁免（nlohmann/json，D25）；**电路建模路径允许 WDF 库豁免**（WaveDigitalFilters，GPL-3.0 固定 commit，仅限 `core/modules/dsp/` 内使用，#111）。JUCE 只出现在 `desktop/`。SIMD 编译选项只允许出现在 NAM 库 target（`core/modules/nam/`），core 本体不得含。
 3. **图交换协议**：所有音频图变更 = request → 后台加载 → 双缓冲原子交换。UI 线程直接改图 = 错误。
 4. **注册表唯一键**：模块 ID 全局唯一；预设加载逐槽显式校验并报错，不静默失败。
 5. **引擎是参数权威**：UI 只读镜像，经队列订阅引擎广播。
