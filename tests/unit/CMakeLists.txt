@@ -5,6 +5,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/catchorg/Catch2.git
     GIT_TAG v3.8.0
     GIT_SHALLOW TRUE
+    UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(Catch2)
 
@@ -19,6 +20,8 @@ add_executable(namfx_tests
     chain_test.cpp
     crossfade_test.cpp
     graph_exchange_test.cpp
+    preset_io_test.cpp
+    migration_test.cpp
 )
 
 target_link_libraries(namfx_tests PRIVATE
