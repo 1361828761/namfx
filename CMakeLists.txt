@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.24)
-project(namfx LANGUAGES CXX)
+
+# Embedded debug info (/Z7): the JUCE GUI app compiles many translation
+# units in parallel and JUCE strips /FS, so a shared PDB clashes; embedded
+# info avoids the problem everywhere (must be set before project())
+if(MSVC)
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded)
+endif()
+
+project(namfx LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,6 +15,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(NAMFX_BUILD_TESTS "Build unit tests" ON)
 option(NAMFX_BUILD_TOOLS "Build tools" ON)
+option(NAMFX_BUILD_DESKTOP "Build the JUCE desktop editor (needs JUCE_DIR)" ON)
 
 enable_testing()
 
@@ -63,4 +72,8 @@ endif()
 if(NAMFX_BUILD_TOOLS)
     add_subdirectory(tools/latency)
     add_subdirectory(tools/render)
+endif()
+
+if(NAMFX_BUILD_DESKTOP)
+    add_subdirectory(desktop)
 endif()
