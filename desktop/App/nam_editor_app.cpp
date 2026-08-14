@@ -4,6 +4,7 @@
 
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -93,12 +94,32 @@ MainWindow::MainWindow(juce::Component& content)
     setContentNonOwned(&content, false);
     setResizable(true, false);
     setUsingNativeTitleBar(true);
+    // remember the window size across launches (the user resizes it once,
+    // it stays that way); default is large enough for the device + tuner +
+    // chain panels
+    juce::PropertiesFile::Options opts;
+    opts.applicationName = "NAM Editor";
+    opts.filenameSuffix = ".settings";
+    opts.folderName = "namfx";
+    juce::PropertiesFile props(opts);
+    const int w = props.getIntValue("windowW", 1280);
+    const int h = props.getIntValue("windowH", 800);
+    content.setSize(w, h);
     centreWithSize(content.getWidth(), content.getHeight());
     setVisible(true);
 }
 
 void MainWindow::closeButtonPressed()
 {
+    juce::PropertiesFile::Options opts;
+    opts.applicationName = "NAM Editor";
+    opts.filenameSuffix = ".settings";
+    opts.folderName = "namfx";
+    juce::PropertiesFile props(opts);
+    if (auto* content = getContentComponent()) {
+        props.setValue("windowW", content->getWidth());
+        props.setValue("windowH", content->getHeight());
+    }
     juce::JUCEApplication::getInstance()->systemRequestedQuit();
 }
 
@@ -111,7 +132,11 @@ void NAMEditorApplication::initialise(const juce::String&)
 #endif
     std::signal(SIGABRT, &abortHandler);
     crashLog("lifecycle: initialise begin");
-    demoDir_ = juce::File::getCurrentWorkingDirectory().getChildFile("core/preset/demo");
+    demoDir_ = juce::File(NAMFX_DEMO_DIR);
+    if (!demoDir_.isDirectory()) {
+        // fall back to the working directory (dev launches from the repo root)
+        demoDir_ = juce::File::getCurrentWorkingDirectory().getChildFile("core/preset/demo");
+    }
     engineSource_ = std::make_unique<EngineAudioSource>(host_);
     player_.setSource(engineSource_.get());
     // request a small buffer for low round-trip latency; the device panel
@@ -163,26 +188,40 @@ void NAMEditorApplication::timerCallback()
 void NAMEditorApplication::updateTunerReadout()
 {
     const dsp::Tuner& tuner = host_.tuner();
-    const int sel = stringBox_->getSelectedId();
-    const int stringIdx = (sel > 0 ? sel : 6) - 1; // 0 = 1st string
-    const int target = kTargetNotes[tuning_][stringIdx];
-    static const char* kStringNames[6] = {"1E", "2B", "3G", "4D", "5A", "6E"};
-    if (tuner.noteDetected()) {
-        const int semi = tuner.midiNote() - target;
-        const float dev = static_cast<float>(semi) * 100.0f + tuner.cents();
-        const juce::String status = (dev > 5.0f) ? "偏高"
-                                    : ((dev < -5.0f) ? "偏低" : "准");
-        tunerLabel_->setText(juce::String(kStringNames[stringIdx]) + " 目标 "
-                                 + noteName(target) + " | 实测 "
-                                 + juce::String(tuner.frequency(), 1) + " Hz ("
-                                 + noteName(tuner.midiNote()) + ") | 偏差 "
-                                 + juce::String(dev, 0) + " ct " + status,
+    if (!tuner.noteDetected()) {
+        tunerLabel_->setText("调音器 | 无信号（A4=440Hz 基准，弹奏任意弦自动识别）",
                              juce::dontSendNotification);
-    } else {
-        tunerLabel_->setText(juce::String(kStringNames[stringIdx]) + " 目标 "
-                                 + noteName(target) + " | 无信号",
-                             juce::dontSendNotification);
+        return;
     }
+    // auto-match the string nearest the detected pitch: the player plucks a
+    // string and the readout names it plus the deviation in cents
+    const int detected = tuner.midiNote();
+    int best = 0;
+    int bestDist = 99;
+    for (int i = 0; i < kStringCount; ++i) {
+        const int d = std::abs(detected - kTargetNotes[tuning_][i]);
+        if (d < bestDist) {
+            bestDist = d;
+            best = i;
+        }
+    }
+    static const char* kStringNames[6] = {"1弦E4", "2弦B3", "3弦G3", "4弦D3", "5弦A2", "6弦E2"};
+    if (bestDist > 2) {
+        tunerLabel_->setText("检测到 " + noteName(detected) + "（" + juce::String(tuner.frequency(), 1)
+                                 + " Hz），不在 " + juce::String(kTuningNames[tuning_])
+                                 + " 调弦的任何弦附近",
+                             juce::dontSendNotification);
+        return;
+    }
+    const int target = kTargetNotes[tuning_][best];
+    const float dev = static_cast<float>(detected - target) * 100.0f + tuner.cents();
+    const juce::String status = (dev > 5.0f) ? "偏高"
+                                : ((dev < -5.0f) ? "偏低" : "准");
+    tunerLabel_->setText(juce::String(kStringNames[best]) + " 目标 " + noteName(target)
+                             + " | 实测 " + juce::String(tuner.frequency(), 1) + " Hz ("
+                             + noteName(detected) + ") | 偏差 " + juce::String(dev, 0) + " ct "
+                             + status,
+                         juce::dontSendNotification);
 }
 
 void NAMEditorApplication::rebuildPresetList()
@@ -307,24 +346,24 @@ void NAMEditorApplication::applyAudioSetup()
 
 void NAMEditorApplication::buildUi()
 {
-    setSize(640, 470);
+    setSize(1280, 800);
     presetBox_ = std::make_unique<juce::ComboBox>();
-    presetBox_->setBounds(16, 16, 280, 28);
+    presetBox_->setBounds(16, 16, 360, 28);
     addAndMakeVisible(*presetBox_);
     presetBox_->onChange = [this] { loadSelectedPreset(); };
 
     loadButton_ = std::make_unique<juce::TextButton>("Load");
-    loadButton_->setBounds(304, 16, 72, 28);
+    loadButton_->setBounds(384, 16, 72, 28);
     addAndMakeVisible(*loadButton_);
     loadButton_->onClick = [this] { loadSelectedPreset(); };
 
     statusLabel_ = std::make_unique<juce::Label>();
-    statusLabel_->setBounds(16, 52, 600, 20);
+    statusLabel_->setBounds(16, 52, 1240, 20);
     addAndMakeVisible(*statusLabel_);
 
     // audio device panel: type / device / sample rate / buffer size
     deviceTypeBox_ = std::make_unique<juce::ComboBox>();
-    deviceTypeBox_->setBounds(16, 80, 170, 26);
+    deviceTypeBox_->setBounds(16, 80, 240, 26);
     addAndMakeVisible(*deviceTypeBox_);
     deviceTypeBox_->onChange = [this] {
         const int typeIdx = deviceTypeBox_->getSelectedId();
@@ -337,40 +376,42 @@ void NAMEditorApplication::buildUi()
     };
 
     deviceBox_ = std::make_unique<juce::ComboBox>();
-    deviceBox_->setBounds(194, 80, 210, 26);
+    deviceBox_->setBounds(264, 80, 300, 26);
     addAndMakeVisible(*deviceBox_);
 
     sampleRateBox_ = std::make_unique<juce::ComboBox>();
-    sampleRateBox_->setBounds(412, 80, 86, 26);
+    sampleRateBox_->setBounds(572, 80, 100, 26);
     addAndMakeVisible(*sampleRateBox_);
 
     bufferSizeBox_ = std::make_unique<juce::ComboBox>();
-    bufferSizeBox_->setBounds(506, 80, 76, 26);
+    bufferSizeBox_->setBounds(680, 80, 100, 26);
     addAndMakeVisible(*bufferSizeBox_);
 
     applyAudioButton_ = std::make_unique<juce::TextButton>("Apply");
-    applyAudioButton_->setBounds(590, 80, 40, 26);
+    applyAudioButton_->setBounds(788, 80, 60, 26);
     addAndMakeVisible(*applyAudioButton_);
     applyAudioButton_->onClick = [this] { applyAudioSetup(); };
 
-    // tuner panel: string selection + deviation readout
-    stringBox_ = std::make_unique<juce::ComboBox>();
-    stringBox_->setBounds(16, 116, 110, 26);
-    addAndMakeVisible(*stringBox_);
-    stringBox_->addItem("1(E4)", 1);
-    stringBox_->addItem("2(B3)", 2);
-    stringBox_->addItem("3(G3)", 3);
-    stringBox_->addItem("4(D3)", 4);
-    stringBox_->addItem("5(A2)", 5);
-    stringBox_->addItem("6(E2)", 6);
-    stringBox_->setSelectedId(6, juce::dontSendNotification);
+    // tuner panel: tuning selection + auto-matched string readout
+    tuningBox_ = std::make_unique<juce::ComboBox>();
+    tuningBox_->setBounds(16, 116, 120, 26);
+    addAndMakeVisible(*tuningBox_);
+    tuningBox_->addItem("EADGBE", 1);
+    tuningBox_->addItem("Drop D", 2);
+    tuningBox_->setSelectedId(1, juce::dontSendNotification);
+    tuningBox_->onChange = [this] {
+        tuning_ = tuningBox_->getSelectedId() - 1;
+        if (tuning_ < 0 || tuning_ >= kTuningCount) {
+            tuning_ = 0;
+        }
+    };
 
     tunerLabel_ = std::make_unique<juce::Label>();
-    tunerLabel_->setBounds(134, 116, 480, 24);
+    tunerLabel_->setBounds(144, 116, 1100, 24);
     addAndMakeVisible(*tunerLabel_);
 
     sceneLabel_ = std::make_unique<juce::Label>();
-    sceneLabel_->setBounds(16, 148, 300, 20);
+    sceneLabel_->setBounds(16, 148, 400, 20);
     addAndMakeVisible(*sceneLabel_);
 
     // chain view: what is actually loaded (module per slot + parameter
@@ -379,7 +420,7 @@ void NAMEditorApplication::buildUi()
     chainLabel_->setMultiLine(true);
     chainLabel_->setReadOnly(true);
     chainLabel_->setScrollbarsShown(true);
-    chainLabel_->setBounds(16, 176, 600, 270);
+    chainLabel_->setBounds(16, 176, 1240, 600);
     addAndMakeVisible(*chainLabel_);
     chainLabel_->setText("(no preset loaded)", juce::dontSendNotification);
 }

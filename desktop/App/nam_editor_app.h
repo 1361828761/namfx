@@ -79,7 +79,7 @@ private:
     std::unique_ptr<juce::ComboBox> bufferSizeBox_;
     std::unique_ptr<juce::TextButton> applyAudioButton_;
     // tuner panel
-    std::unique_ptr<juce::ComboBox> stringBox_;
+    std::unique_ptr<juce::ComboBox> tuningBox_; // EADGBE / Drop D
     std::unique_ptr<juce::Label> tunerLabel_;
     std::unique_ptr<juce::Label> sceneLabel_;
     juce::File demoDir_;

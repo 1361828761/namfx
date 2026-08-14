@@ -53,6 +53,12 @@ target_sources(namfx_editor PRIVATE
 # branch (a plain GUI app, not a plugin)
 target_compile_definitions(namfx_editor PRIVATE JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
 
+# the demo presets live in the source tree; embed the absolute path so the
+# app finds them no matter what the working directory is (double-click start)
+target_compile_definitions(namfx_editor PRIVATE
+    "NAMFX_DEMO_DIR=\"${CMAKE_SOURCE_DIR}/core/preset/demo\""
+)
+
 target_include_directories(namfx_editor PRIVATE ${CMAKE_CURRENT_LIST_DIR}/..)
 
 target_link_libraries(namfx_editor PRIVATE
