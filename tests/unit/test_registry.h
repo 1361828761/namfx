@@ -21,6 +21,7 @@
 #include "modules/ir/cab_ir.h"
 #include "modules/module_base.h"
 #include "modules/module_registry.h"
+#include "modules/nam/nam_amp.h"
 
 #include <memory>
 
@@ -67,6 +68,7 @@ inline std::shared_ptr<const namfx::ModuleRegistry> makeRegistry()
     namfx::registerOctave(*registry);
     namfx::registerHallReverb(*registry);
     namfx::registerCabIr(*registry);
+    namfx::registerNamAmp(*registry);
     registry->registerModule("stereo.passthrough", "pedal", {},
                              [] { return std::make_unique<StereoPassthroughModule>(); });
     return registry;

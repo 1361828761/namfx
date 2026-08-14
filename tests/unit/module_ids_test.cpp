@@ -15,7 +15,7 @@ TEST_CASE("all built-in modules register under globally unique ids")
     auto registry = testx::makeRegistry();
     const std::vector<std::string> ids = registry->allIds();
 
-    REQUIRE(ids.size() >= 20); // 19 DSP/IR built-ins + stereo.passthrough test module
+    REQUIRE(ids.size() >= 21); // 19 DSP/IR built-ins + amp.nam + stereo.passthrough test module
 
     const std::set<std::string> unique(ids.begin(), ids.end());
     REQUIRE(unique.size() == ids.size());
@@ -34,7 +34,7 @@ TEST_CASE("built-in module ids match the documented set")
         "gain", "tone", "od.ts808", "od.transparent", "od.mosfet",
         "comp.ota", "mod.chorus", "mod.flanger", "mod.phaser", "mod.wah",
         "gate.ns2", "eq.ge7", "dly.dm2", "dly.tape", "rvb.spring", "pitch.shift",
-        "pitch.octave", "rvb.hall", "cab.ir", "stereo.passthrough",
+        "pitch.octave", "rvb.hall", "cab.ir", "amp.nam", "stereo.passthrough",
     };
     REQUIRE(ids.size() == expected.size());
     for (std::size_t i = 0; i < expected.size(); ++i) {

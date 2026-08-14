@@ -19,6 +19,7 @@
 #include "modules/dsp/hall_reverb.h"
 #include "modules/ir/cab_ir.h"
 #include "modules/module_registry.h"
+#include "modules/nam/nam_amp.h"
 #include "preset/preset_io.h"
 
 #include <cmath>
@@ -259,6 +260,7 @@ int main(int argc, char** argv)
     namfx::registerOctave(*registry);
     namfx::registerHallReverb(*registry);
     namfx::registerCabIr(*registry);
+    namfx::registerNamAmp(*registry);
 
     namfx::preset::LoadReport report;
     namfx::preset::Preset preset = namfx::preset::loadPreset(

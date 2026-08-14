@@ -4,6 +4,7 @@ add_executable(namfx_render
 
 target_link_libraries(namfx_render PRIVATE
     namfx_core
+    nam_core
     namfx_warnings
     wavedigitalfilters
 )

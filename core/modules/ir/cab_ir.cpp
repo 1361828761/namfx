@@ -193,9 +193,10 @@ void CabIrModule::reset()
     lpY2_ = 0.0f;
 }
 
-void CabIrModule::setSampleRate(double sampleRate)
+void CabIrModule::setSampleRate(double)
 {
-    prepare(sampleRate, 0);
+    // prepare() is the authoritative entry point; Chain::prepare calls it
+    // with the real max block before touching setSampleRate/setMaxBlock
 }
 
 void CabIrModule::setMaxBlock(int)

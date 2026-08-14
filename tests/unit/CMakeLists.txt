@@ -35,15 +35,21 @@ add_executable(namfx_tests
     partitioned_conv_test.cpp
     resample_test.cpp
     min_phase_test.cpp
+    nam_amp_test.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)
 
+file(COPY ${PROJECT_SOURCE_DIR}/tests/unit/assets/ DESTINATION ${CMAKE_BINARY_DIR}/test-assets)
+
 file(TO_CMAKE_PATH "${CMAKE_BINARY_DIR}/demo-presets" NAMFX_DEMO_DIR_CMAKE)
 target_compile_definitions(namfx_tests PRIVATE NAMFX_DEMO_DIR="${NAMFX_DEMO_DIR_CMAKE}")
+file(TO_CMAKE_PATH "${CMAKE_BINARY_DIR}/test-assets" NAMFX_TEST_ASSETS_DIR_CMAKE)
+target_compile_definitions(namfx_tests PRIVATE NAMFX_TEST_ASSETS_DIR="${NAMFX_TEST_ASSETS_DIR_CMAKE}")
 
 target_link_libraries(namfx_tests PRIVATE
     namfx_core
+    nam_core
     namfx_warnings
     wavedigitalfilters
     Catch2::Catch2WithMain
