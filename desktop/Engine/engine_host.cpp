@@ -105,7 +105,8 @@ void EngineHost::prepare(double sampleRate, int blockSize)
 
 void EngineHost::process(const float* inL, const float* inR, float* outL, float* outR, int n)
 {
-    if (!prepared_) {
+    if (!prepared_ || bypass_.load(std::memory_order_relaxed)) {
+        // master bypass: clean passthrough, the engine is skipped entirely
         for (int i = 0; i < n; ++i) {
             outL[i] = inL[i];
             outR[i] = inR[i];

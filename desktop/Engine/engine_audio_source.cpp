@@ -13,10 +13,10 @@ EngineAudioSource::EngineAudioSource(EngineHost& host) : host_(host)
 void EngineAudioSource::prepareToPlay(int samplesPerBlockExpected, double sampleRate)
 {
     // scratch buffers are sized here (device/block changes), never inside
-    // the callback
+    // the callback; zeroed so a silent input can never leak stale data
     zeroIn_.assign(static_cast<std::size_t>(samplesPerBlockExpected), 0.0f);
-    scratchL_.resize(static_cast<std::size_t>(samplesPerBlockExpected));
-    scratchR_.resize(static_cast<std::size_t>(samplesPerBlockExpected));
+    scratchL_.assign(static_cast<std::size_t>(samplesPerBlockExpected), 0.0f);
+    scratchR_.assign(static_cast<std::size_t>(samplesPerBlockExpected), 0.0f);
     host_.prepare(sampleRate, samplesPerBlockExpected);
 }
 

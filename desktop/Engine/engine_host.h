@@ -33,6 +33,11 @@ public:
     void prepare(double sampleRate, int blockSize);
     void process(const float* inL, const float* inR, float* outL, float* outR, int n);
 
+    // control thread: master bypass (true = clean input passthrough, the
+    // whole engine chain is skipped); atomic, effective from the next block
+    void setBypass(bool bypass) { bypass_.store(bypass, std::memory_order_relaxed); }
+    bool bypass() const { return bypass_.load(std::memory_order_relaxed); }
+
     // control thread
     bool loadPreset(const std::string& jsonPath, const std::string& baseDir, std::string& error);
     bool loadPresetText(const std::string& jsonText, const std::string& baseDir,
@@ -77,6 +82,7 @@ private:
     midi::MidiRouter::Actions midiActions_;
     dsp::Tuner tuner_;
     audio::Chain* chain_ = nullptr; // points at the pending/new chain
+    std::atomic<bool> bypass_{false};
     bool prepared_ = false;
     double sampleRate_ = 48000.0;
     int blockSize_ = 64;

@@ -336,10 +336,22 @@ void NAMEditorApplication::refreshAudioDeviceControls()
     }
     auto* dev = deviceManager_.getCurrentAudioDevice();
     if (dev != nullptr) {
-        sampleRateBox_->setSelectedId(static_cast<int>(dev->getCurrentSampleRate()),
-                                      juce::dontSendNotification);
-        bufferSizeBox_->setSelectedId(dev->getCurrentBufferSizeSamples(),
-                                      juce::dontSendNotification);
+        const int sr = static_cast<int>(dev->getCurrentSampleRate());
+        if (sr > 0) {
+            sampleRateBox_->setSelectedId(sr, juce::dontSendNotification);
+        }
+        const int bs = dev->getCurrentBufferSizeSamples();
+        if (bs > 0) {
+            bufferSizeBox_->setSelectedId(bs, juce::dontSendNotification);
+        }
+    }
+    // sensible defaults when the device reports nothing (e.g. ASIO before
+    // it has been opened): 44.1 kHz / 128 samples
+    if (sampleRateBox_->getSelectedId() <= 0) {
+        sampleRateBox_->setSelectedId(44100, juce::dontSendNotification);
+    }
+    if (bufferSizeBox_->getSelectedId() <= 0) {
+        bufferSizeBox_->setSelectedId(128, juce::dontSendNotification);
     }
 }
 
@@ -357,8 +369,10 @@ void NAMEditorApplication::applyAudioSetup()
     deviceManager_.getAudioDeviceSetup(setup);
     setup.outputDeviceName = deviceName;
     setup.inputDeviceName = deviceName;
-    setup.sampleRate = static_cast<double>(sampleRateBox_->getSelectedId());
-    setup.bufferSize = bufferSizeBox_->getSelectedId();
+    const int selRate = sampleRateBox_->getSelectedId();
+    setup.sampleRate = selRate > 0 ? static_cast<double>(selRate) : 44100.0;
+    const int selBuf = bufferSizeBox_->getSelectedId();
+    setup.bufferSize = selBuf > 0 ? selBuf : 128;
     // mute BEFORE any device restart (both the type switch and the setup
     // change stop the callback) and hold it until the new device warms up
     host_.output().setMute(true);
@@ -380,6 +394,8 @@ void NAMEditorApplication::applyAudioSetup()
                               : juce::String(setup.bufferSize))
             + " samples",
         juce::dontSendNotification);
+    // show the actual values the device ended up with
+    refreshAudioDeviceControls();
 }
 
 void NAMEditorApplication::buildUi()
@@ -437,6 +453,15 @@ void NAMEditorApplication::buildUi()
     applyAudioButton_->setBounds(788, 80, 60, 26);
     addAndMakeVisible(*applyAudioButton_);
     applyAudioButton_->onClick = [this] { applyAudioSetup(); };
+
+    // master bypass: clean input passthrough (whole engine skipped)
+    bypassToggle_ = std::make_unique<juce::ToggleButton>("Bypass");
+    bypassToggle_->setBounds(856, 80, 80, 26);
+    bypassToggle_->setToggleState(false, juce::dontSendNotification);
+    addAndMakeVisible(*bypassToggle_);
+    bypassToggle_->onClick = [this] {
+        host_.setBypass(bypassToggle_->getToggleState());
+    };
 
     // tuner panel: tuning selection + graphical deviation meter
     tuningBox_ = std::make_unique<juce::ComboBox>();
