@@ -177,7 +177,15 @@ void NAMEditorApplication::timerCallback()
     if (++aliveTicks_ % 50 == 0) {
         crashLog("alive tick"); // 5 s heartbeat for crash diagnostics
     }
-    updateTunerReadout();
+    // after a device switch the output stays muted until the new device has
+    // warmed up (filter states settle), then fades back in
+    if (pendingUnmute_ != 0 && juce::Time::getMillisecondCounter() >= pendingUnmute_) {
+        pendingUnmute_ = 0;
+        host_.output().setMute(false);
+    }
+    if (tunerOn_) {
+        updateTunerReadout();
+    }
     if (host_.sceneCount() > 0) {
         sceneLabel_->setText("Scene: " + juce::String(host_.activeScene() + 1) + "/"
                                  + juce::String(host_.sceneCount()),
@@ -329,12 +337,12 @@ void NAMEditorApplication::applyAudioSetup()
     setup.inputDeviceName = deviceName;
     setup.sampleRate = static_cast<double>(sampleRateBox_->getSelectedId());
     setup.bufferSize = bufferSizeBox_->getSelectedId();
-    deviceManager_.setCurrentAudioDeviceType(typeName, false);
-    // mute through the device restart so switching never pops; the mute is
-    // smoothed on the audio thread (fade in/out over a few ms)
+    // mute BEFORE any device restart (both the type switch and the setup
+    // change stop the callback) and hold it until the new device warms up
     host_.output().setMute(true);
+    deviceManager_.setCurrentAudioDeviceType(typeName, false);
     const juce::String err = deviceManager_.setAudioDeviceSetup(setup, true);
-    host_.output().setMute(false);
+    pendingUnmute_ = juce::Time::getMillisecondCounter() + 800;
     if (err.isNotEmpty()) {
         statusLabel_->setText("audio setup error: " + err, juce::dontSendNotification);
         return;
@@ -377,11 +385,12 @@ void NAMEditorApplication::buildUi()
         const juce::OwnedArray<juce::AudioIODeviceType>& types =
             deviceManager_.getAvailableDeviceTypes();
         if (typeIdx > 0 && typeIdx <= types.size()) {
-            // mute through the device restart so the mode switch never pops
+            // mute BEFORE the device restarts (the type switch itself stops
+            // the callback) and hold it until the new device warms up
             host_.output().setMute(true);
             deviceManager_.setCurrentAudioDeviceType(types[typeIdx - 1]->getTypeName(), false);
-            host_.output().setMute(false);
             refreshAudioDeviceControls();
+            pendingUnmute_ = juce::Time::getMillisecondCounter() + 800;
         }
     };
 
@@ -420,12 +429,28 @@ void NAMEditorApplication::buildUi()
     tunerMeter_->setBounds(144, 112, 480, 34);
     addAndMakeVisible(*tunerMeter_);
 
+    // CJK-capable font: JUCE's default typeface has no Chinese glyphs
+    const juce::Font cjk = juce::Font(juce::FontOptions().withName("Microsoft YaHei UI")
+                                          .withHeight(13.0f));
     tunerLabel_ = std::make_unique<juce::Label>();
     tunerLabel_->setBounds(636, 116, 620, 24);
+    tunerLabel_->setFont(cjk);
     addAndMakeVisible(*tunerLabel_);
 
+    tunerToggle_ = std::make_unique<juce::ToggleButton>("Tuner");
+    tunerToggle_->setBounds(16, 150, 88, 24);
+    tunerToggle_->setToggleState(true, juce::dontSendNotification);
+    addAndMakeVisible(*tunerToggle_);
+    tunerToggle_->onClick = [this] {
+        tunerOn_ = tunerToggle_->getToggleState();
+        if (!tunerOn_) {
+            tunerMeter_->setDeviation(0.0f, false, false);
+            tunerLabel_->setText("调音器已关闭", juce::dontSendNotification);
+        }
+    };
+
     sceneLabel_ = std::make_unique<juce::Label>();
-    sceneLabel_->setBounds(16, 148, 400, 20);
+    sceneLabel_->setBounds(120, 150, 400, 20);
     addAndMakeVisible(*sceneLabel_);
 
     // chain view: what is actually loaded (module per slot + parameter

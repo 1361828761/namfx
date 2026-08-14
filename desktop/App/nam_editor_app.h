@@ -81,11 +81,14 @@ private:
     std::unique_ptr<juce::TextButton> applyAudioButton_;
     // tuner panel
     std::unique_ptr<juce::ComboBox> tuningBox_; // EADGBE / Drop D
+    std::unique_ptr<juce::ToggleButton> tunerToggle_;
     std::unique_ptr<TunerMeter> tunerMeter_;
     std::unique_ptr<juce::Label> tunerLabel_;
     std::unique_ptr<juce::Label> sceneLabel_;
     juce::File demoDir_;
     int tuning_ = 0;
+    bool tunerOn_ = true;
+    juce::uint32 pendingUnmute_ = 0; // device switch: unmute after warm-up
     int aliveTicks_ = 0; // crash-diagnostic heartbeat counter
 };
 
