@@ -176,6 +176,12 @@ void NAMEditorApplication::timerCallback()
 {
     if (++aliveTicks_ % 50 == 0) {
         crashLog("alive tick"); // 5 s heartbeat for crash diagnostics
+        // under/overrun counter: growing xruns mean the buffer size is too
+        // small for the device (the classic cause of "explosive" audio)
+        const int xr = deviceManager_.getXRunCount();
+        xrunLabel_->setText(juce::String("xrun: ")
+                                + (xr < 0 ? juce::String("n/a") : juce::String(xr)),
+                            juce::dontSendNotification);
     }
     // after a device switch the output stays muted until the new device has
     // warmed up (filter states settle), then fades back in
@@ -196,9 +202,11 @@ void NAMEditorApplication::timerCallback()
 void NAMEditorApplication::updateTunerReadout()
 {
     const dsp::Tuner& tuner = host_.tuner();
+    // English readouts: JUCE's bundled typefaces have no CJK glyphs and the
+    // system-font fallback is unreliable, so Chinese text would garble
     if (!tuner.noteDetected()) {
         tunerMeter_->setDeviation(0.0f, false, false);
-        tunerLabel_->setText("无信号（A4=440Hz）", juce::dontSendNotification);
+        tunerLabel_->setText("no signal (A4=440Hz)", juce::dontSendNotification);
         return;
     }
     // auto-match the string nearest the detected pitch: the player plucks a
@@ -213,24 +221,24 @@ void NAMEditorApplication::updateTunerReadout()
             best = i;
         }
     }
-    static const char* kStringNames[6] = {"1弦E4", "2弦B3", "3弦G3", "4弦D3", "5弦A2", "6弦E2"};
+    static const char* kStringNames[6] = {"1stE4", "2ndB3", "3rdG3", "4thD3", "5thA2", "6thE2"};
     if (bestDist > 2) {
         tunerMeter_->setDeviation(0.0f, false, false);
-        tunerLabel_->setText("检测到 " + noteName(detected) + "（" + juce::String(tuner.frequency(), 1)
-                                 + " Hz），不在 " + juce::String(kTuningNames[tuning_])
-                                 + " 调弦任何弦附近",
+        tunerLabel_->setText("detected " + noteName(detected) + " ("
+                                 + juce::String(tuner.frequency(), 1) + " Hz), not near any "
+                                 + juce::String(kTuningNames[tuning_]) + " string",
                              juce::dontSendNotification);
         return;
     }
     const int target = kTargetNotes[tuning_][best];
     const float dev = static_cast<float>(detected - target) * 100.0f + tuner.cents();
     const bool inTune = std::fabs(dev) <= 5.0f;
-    const juce::String status = (dev > 5.0f) ? "偏高"
-                                : ((dev < -5.0f) ? "偏低" : "准");
+    const juce::String status = (dev > 5.0f) ? "sharp"
+                                : ((dev < -5.0f) ? "flat" : "in tune");
     tunerMeter_->setDeviation(dev, true, inTune);
-    tunerLabel_->setText(juce::String(kStringNames[best]) + " 目标 " + noteName(target)
-                             + " | 实测 " + juce::String(tuner.frequency(), 1) + " Hz ("
-                             + noteName(detected) + ") | " + juce::String(dev, 0) + " ct "
+    tunerLabel_->setText(juce::String(kStringNames[best]) + " target " + noteName(target)
+                             + " | " + juce::String(tuner.frequency(), 1) + " Hz ("
+                             + noteName(detected) + ") | " + juce::String(dev, 0) + "ct "
                              + status,
                          juce::dontSendNotification);
 }
@@ -342,7 +350,8 @@ void NAMEditorApplication::applyAudioSetup()
     host_.output().setMute(true);
     deviceManager_.setCurrentAudioDeviceType(typeName, false);
     const juce::String err = deviceManager_.setAudioDeviceSetup(setup, true);
-    pendingUnmute_ = juce::Time::getMillisecondCounter() + 800;
+    host_.output().reset(); // clean filter states on the new device rate
+    pendingUnmute_ = juce::Time::getMillisecondCounter() + 1200;
     if (err.isNotEmpty()) {
         statusLabel_->setText("audio setup error: " + err, juce::dontSendNotification);
         return;
@@ -373,8 +382,12 @@ void NAMEditorApplication::buildUi()
     loadButton_->onClick = [this] { loadSelectedPreset(); };
 
     statusLabel_ = std::make_unique<juce::Label>();
-    statusLabel_->setBounds(16, 52, 1240, 20);
+    statusLabel_->setBounds(16, 52, 560, 20);
     addAndMakeVisible(*statusLabel_);
+
+    xrunLabel_ = std::make_unique<juce::Label>();
+    xrunLabel_->setBounds(580, 52, 200, 20);
+    addAndMakeVisible(*xrunLabel_);
 
     // audio device panel: type / device / sample rate / buffer size
     deviceTypeBox_ = std::make_unique<juce::ComboBox>();
@@ -445,7 +458,7 @@ void NAMEditorApplication::buildUi()
         tunerOn_ = tunerToggle_->getToggleState();
         if (!tunerOn_) {
             tunerMeter_->setDeviation(0.0f, false, false);
-            tunerLabel_->setText("调音器已关闭", juce::dontSendNotification);
+            tunerLabel_->setText("tuner off", juce::dontSendNotification);
         }
     };
 

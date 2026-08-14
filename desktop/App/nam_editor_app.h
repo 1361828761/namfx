@@ -72,6 +72,7 @@ private:
     std::unique_ptr<juce::ComboBox> presetBox_;
     std::unique_ptr<juce::TextButton> loadButton_;
     std::unique_ptr<juce::Label> statusLabel_;
+    std::unique_ptr<juce::Label> xrunLabel_; // under/overrun counter
     std::unique_ptr<juce::TextEditor> chainLabel_;
     // audio device panel
     std::unique_ptr<juce::ComboBox> deviceTypeBox_;
