@@ -923,7 +923,7 @@ void NAMEditorApplication::buildUi()
     savePresetButton_->onClick = [this] { saveUserPreset(); };
 
     statusLabel_ = std::make_unique<juce::Label>();
-    statusLabel_->setBounds(470, 30, 560, 20);
+    statusLabel_->setBounds(700, 30, 330, 20);
     addAndMakeVisible(*statusLabel_);
 
     xrunLabel_ = std::make_unique<juce::Label>();
