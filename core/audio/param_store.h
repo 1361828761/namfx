@@ -25,6 +25,13 @@ public:
     float get(const std::string& id) const;
     float target(const std::string& id) const;
 
+    // index-based access (real-time safe, no string lookups); used by the
+    // scene engine whose actions are pre-resolved to indices on load
+    std::size_t indexOf(const std::string& id) const;
+    float getByIndex(std::size_t index) const;
+    void setByIndex(std::size_t index, float value);
+    std::size_t count() const { return slots_.size(); }
+
     void advance(int n);
     bool isRamping() const;
 

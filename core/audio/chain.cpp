@@ -201,5 +201,46 @@ void Chain::setBypass(int slotIndex, bool bypass)
     throw std::out_of_range("chain: no slot with index " + std::to_string(slotIndex));
 }
 
+int Chain::slotIndexOf(const std::string& moduleId) const
+{
+    for (const SlotRuntime& runtime : slots_) {
+        if (runtime.def.moduleId == moduleId) {
+            return runtime.def.slot;
+        }
+    }
+    return -1;
+}
+
+std::size_t Chain::paramIndexOf(int slotIndex, const std::string& paramId) const
+{
+    for (const SlotRuntime& runtime : slots_) {
+        if (runtime.def.slot == slotIndex) {
+            return runtime.store->indexOf(paramId);
+        }
+    }
+    throw std::out_of_range("chain: no slot with index " + std::to_string(slotIndex));
+}
+
+void Chain::setParamByIndex(int slotIndex, std::size_t paramIndex, float value)
+{
+    for (SlotRuntime& runtime : slots_) {
+        if (runtime.def.slot == slotIndex) {
+            runtime.store->setByIndex(paramIndex, value);
+            return;
+        }
+    }
+}
+
+void Chain::setBypassByIndex(int slotIndex, bool bypass)
+{
+    for (SlotRuntime& runtime : slots_) {
+        if (runtime.def.slot == slotIndex) {
+            runtime.def.bypass = bypass;
+            startFade(runtime, !bypass);
+            return;
+        }
+    }
+}
+
 } // namespace audio
 } // namespace namfx

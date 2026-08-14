@@ -67,6 +67,27 @@ float ParamStore::target(const std::string& id) const
     return slotFor(id).target;
 }
 
+std::size_t ParamStore::indexOf(const std::string& id) const
+{
+    const auto it = index_.find(id);
+    if (it == index_.end()) {
+        throw std::out_of_range("unknown param id: " + id);
+    }
+    return it->second;
+}
+
+float ParamStore::getByIndex(std::size_t index) const
+{
+    return slots_.at(index).value;
+}
+
+void ParamStore::setByIndex(std::size_t index, float value)
+{
+    Slot& slot = slots_.at(index);
+    slot.target = clampTo(slot.spec, value);
+    startRamp(slot);
+}
+
 void ParamStore::advance(int n)
 {
     if (n <= 0) {

@@ -33,6 +33,16 @@ public:
     int slotCount() const;
     int maxSlots() const { return maxSlots_; }
 
+    // control-thread lookup helpers for the scene engine (pre-resolve ids
+    // to indices so the audio-thread application path never touches strings)
+    int slotIndexOf(const std::string& moduleId) const;
+    std::size_t paramIndexOf(int slotIndex, const std::string& paramId) const;
+
+    // audio-thread scene application (block boundary): index-based, zero
+    // allocation, no string work
+    void setParamByIndex(int slotIndex, std::size_t paramIndex, float value);
+    void setBypassByIndex(int slotIndex, bool bypass);
+
     static constexpr int kMinSlots = 8;
 
 private:

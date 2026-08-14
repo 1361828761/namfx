@@ -3,6 +3,7 @@ add_library(namfx_core STATIC
     audio/audio_graph.cpp
     audio/chain.cpp
     audio/param_store.cpp
+    audio/scene_engine.cpp
     modules/module_registry.cpp
     modules/dsp/gain.cpp
     modules/dsp/tone.cpp
