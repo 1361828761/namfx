@@ -12,6 +12,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <dbghelp.h>
+#include <commdlg.h>
+#pragma comment(lib, "comdlg32.lib")
 #endif
 
 // crash diagnostics (global scope): the headless test runs saw the app exit
@@ -1283,13 +1285,22 @@ void NAMEditorApplication::buildUi()
     importModelButton_->setBounds(784, 218, 72, 26);
     addAndMakeVisible(*importModelButton_);
     importModelButton_->onClick = [this] {
-        juce::FileChooser chooser("Import NAM model",
-                                  juce::File::getSpecialLocation(juce::File::userHomeDirectory),
-                                  "*.nam");
-        if (!chooser.browseForFileToOpen()) {
+#ifdef _WIN32
+        char pathBuf[MAX_PATH] = {};
+        OPENFILENAMEA ofn = {};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.lpstrFilter = "NAM models (*.nam)\0*.nam\0All files\0*.*\0\0";
+        ofn.lpstrFile = pathBuf;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrTitle = "Import NAM model";
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+        if (!GetOpenFileNameA(&ofn)) {
             return;
         }
-        const juce::File src = chooser.getResult();
+        const juce::File src(ofn.lpstrFile);
+#else
+        return;
+#endif
         juce::File destDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
                                  .getChildFile("namfx")
                                  .getChildFile("models");
