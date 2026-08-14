@@ -38,6 +38,7 @@ add_executable(namfx_tests
     nam_amp_test.cpp
     scene_engine_test.cpp
     control_router_test.cpp
+    midi_router_test.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)

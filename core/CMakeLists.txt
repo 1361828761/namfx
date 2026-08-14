@@ -5,6 +5,7 @@ add_library(namfx_core STATIC
     audio/param_store.cpp
     audio/scene_engine.cpp
     audio/control_router.cpp
+    midi/midi_router.cpp
     modules/module_registry.cpp
     modules/dsp/gain.cpp
     modules/dsp/tone.cpp

@@ -37,6 +37,7 @@ public:
     // to indices so the audio-thread application path never touches strings)
     int slotIndexOf(const std::string& moduleId) const;
     std::size_t paramIndexOf(int slotIndex, const std::string& paramId) const;
+    const std::vector<ParamSpec>& specsOf(int slotIndex) const;
 
     // audio-thread scene application (block boundary): index-based, zero
     // allocation, no string work
