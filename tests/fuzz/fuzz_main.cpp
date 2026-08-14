@@ -1,4 +1,4 @@
-// Fault injection fuzz targets (PLAN §12, M1 scope). Deterministic seeding:
+// Fault injection fuzz targets (PLAN sec 12, M1 scope). Deterministic seeding:
 // the same --seed reproduces the same run. Run in CI via ctest; a crash is
 // reported by the test runner, escaped exceptions and non-finite audio are
 // findings that exit non-zero here.
@@ -13,6 +13,7 @@
 #include "modules/dsp/tone.h"
 #include "modules/dsp/ts808.h"
 #include "modules/module_registry.h"
+#include "modules/nam/nam_amp.h"
 #include "platform/rt_alloc.h"
 #include "preset/preset_io.h"
 
@@ -22,13 +23,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 
 namespace {
@@ -59,6 +64,7 @@ std::shared_ptr<const namfx::ModuleRegistry> makeRegistry()
     namfx::registerOtaComp(*registry);
     namfx::registerChorus(*registry);
     namfx::registerFlanger(*registry);
+    namfx::registerNamAmp(*registry);
     return registry;
 }
 
@@ -347,6 +353,68 @@ int fuzzOom(std::mt19937& rng, int iters,
 #endif
 }
 
+// ---- F5: truncated/corrupted .nam files -----------------------------------
+// The .nam loader is the semi-trusted surface (community models): every
+// mutation must either be rejected (loadAsset false / exception) or load
+// into a model that still renders finite audio - never crash, never escape.
+int fuzzNamFiles(std::mt19937& rng, int iters,
+                 const std::shared_ptr<const namfx::ModuleRegistry>& registry)
+{
+    const std::filesystem::path base = std::filesystem::temp_directory_path() / "namfx_fuzz_nam";
+    std::filesystem::create_directories(base);
+    const std::filesystem::path goodPath =
+        std::filesystem::path(NAMFX_TEST_ASSETS_DIR) / "wavenet.nam";
+    std::ifstream in(goodPath, std::ios::binary);
+    std::string good((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (good.empty()) {
+        std::printf("F5: cannot read seed model, skipped\n");
+        return 0;
+    }
+    int escaped = 0;
+    for (int i = 0; i < iters; ++i) {
+        std::string mutated = good;
+        if (rng() % 3 == 0) {
+            mutated.resize(rng() % (good.size() + 1)); // truncate anywhere
+        }
+        const int flips = 1 + static_cast<int>(rng() % 5);
+        for (int f = 0; f < flips && !mutated.empty(); ++f) {
+            mutated[rng() % mutated.size()] = static_cast<char>(rng() & 0xFF);
+        }
+        if (mutated.empty()) {
+            continue;
+        }
+        const std::filesystem::path file = base / "mut.nam";
+        {
+            std::ofstream out(file, std::ios::binary);
+            out.write(mutated.data(), static_cast<std::streamsize>(mutated.size()));
+        }
+        try {
+            auto mod = registry->create("amp.nam");
+            if (mod != nullptr && mod->loadAsset(file.string())) {
+                mod->prepare(48000.0, 64);
+                std::vector<float> audioIn(256, 0.1f);
+                std::vector<float> audioOut(256, 0.0f);
+                float dummyR = 0.0f;
+                for (std::size_t off = 0; off < audioIn.size(); off += 64) {
+                    mod->process(audioIn.data() + off, &dummyR, audioOut.data() + off, &dummyR, 64);
+                }
+                for (float v : audioOut) {
+                    if (!std::isfinite(v)) {
+                        ++escaped;
+                        break;
+                    }
+                }
+            }
+        } catch (const std::exception&) {
+            // acceptable: rejected during load
+        } catch (...) {
+            ++escaped;
+        }
+    }
+    std::filesystem::remove_all(base);
+    return escaped;
+}
+
 } // namespace
 
 static void terminateHandler()
@@ -402,14 +470,20 @@ int main(int argc, char** argv)
     const int escapedOom = fuzzOom(rng, iters, registry);
     std::printf("F4 done: %d escaped\n", escapedOom);
     std::fflush(stdout);
+    std::printf("F5 truncated/corrupted .nam: starting\n");
+    std::fflush(stdout);
+    const int escapedNam = fuzzNamFiles(rng, iters, registry);
+    std::printf("F5 done: %d escaped\n", escapedNam);
+    std::fflush(stdout);
 
     std::printf("namfx_fuzz seed=%u iters=%d\n", seed, iters);
     std::printf("  F1 schema mutation JSON:        %d escaped exceptions\n", escapedJson);
     std::printf("  F2 migration chain:             %d escaped exceptions\n", escapedMigration);
     std::printf("  F3 sample-rate/block injection: %d failures\n", rateFailures);
     std::printf("  F4 OOM simulation:              %d escaped exceptions\n", escapedOom);
+    std::printf("  F5 truncated/corrupted .nam:    %d escaped\n", escapedNam);
 
-    const int total = escapedJson + escapedMigration + rateFailures + escapedOom;
+    const int total = escapedJson + escapedMigration + rateFailures + escapedOom + escapedNam;
     if (total == 0) {
         std::printf("namfx_fuzz: PASS\n");
         return 0;

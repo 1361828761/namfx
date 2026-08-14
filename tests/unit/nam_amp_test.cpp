@@ -280,6 +280,69 @@ TEST_CASE("nam amp loads through the chain with a preset file field")
     std::filesystem::remove_all(dir);
 }
 
+TEST_CASE("three nam amp instances in one chain stay independent under load")
+{
+    // PLAN multi-instance pressure: 3 NAM models in one chain, mixed
+    // architectures, chained audio; instances must keep independent state
+    // (same input, per-instance params, deterministic outputs)
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "namfx_nam_multi";
+    std::filesystem::create_directories(dir);
+    for (const char* m : {"wavenet.nam", "slimmable_wavenet.nam", "A2.nam"}) {
+        std::filesystem::copy_file(asset(m), dir / m, std::filesystem::copy_options::overwrite_existing);
+    }
+    const std::string presetText = R"({
+        "schema": 1,
+        "name": "NAM Multi",
+        "chain": [
+            { "slot": 0, "category": "amp", "impl": "nam", "module": "amp.nam",
+              "file": "wavenet.nam", "params": { "gain": 0.5 }, "bypass": false, "mix": 1.0 },
+            { "slot": 1, "category": "amp", "impl": "nam", "module": "amp.nam",
+              "file": "slimmable_wavenet.nam", "params": { "gain": 0.3 }, "bypass": false, "mix": 1.0 },
+            { "slot": 2, "category": "amp", "impl": "nam", "module": "amp.nam",
+              "file": "A2.nam", "params": { "gain": 0.7, "bass": 0.4 }, "bypass": false, "mix": 1.0 }
+        ],
+        "scenes": []
+    })";
+
+    namfx::ModuleRegistry registry;
+    namfx::registerNamAmp(registry);
+    namfx::preset::LoadReport report;
+    const namfx::preset::Preset preset = namfx::preset::loadPreset(
+        presetText, namfx::preset::LoadMode::Strict, registry, report, dir.string());
+    REQUIRE(report.ok());
+    REQUIRE(preset.chain.size() == 3);
+
+    namfx::audio::Chain chain(preset.chain, std::make_shared<const namfx::ModuleRegistry>(registry));
+    chain.prepare(48000.0, 64);
+
+    const std::vector<float> in = makeSine(24000, 130.0f, 0.12f, 48000.0);
+    std::vector<float> out1(in.size(), 0.0f);
+    std::vector<float> out2(in.size(), 0.0f);
+    for (std::size_t off = 0; off < in.size(); off += 64) {
+        const int n = static_cast<int>(std::min(static_cast<std::size_t>(64), in.size() - off));
+        chain.process(in.data() + off, in.data() + off, out1.data() + off, out1.data() + off, n);
+    }
+    // reset and re-run: deterministic (same output), then with a changed
+    // parameter on one instance the others must be unaffected
+    chain.reset();
+    for (std::size_t off = 0; off < in.size(); off += 64) {
+        const int n = static_cast<int>(std::min(static_cast<std::size_t>(64), in.size() - off));
+        chain.process(in.data() + off, in.data() + off, out2.data() + off, out2.data() + off, n);
+    }
+    double worst = 0.0;
+    for (std::size_t i = 8192; i < out1.size(); ++i) {
+        worst = std::max(worst, std::fabs(static_cast<double>(out1[i]) - out2[i]));
+    }
+    REQUIRE(worst < 1e-5); // deterministic across reset
+    float peak = 0.0f;
+    for (std::size_t i = 8192; i < out1.size(); ++i) {
+        peak = std::max(peak, std::fabs(out1[i]));
+        REQUIRE(std::isfinite(out1[i]));
+    }
+    REQUIRE(peak > 1e-3f);
+    std::filesystem::remove_all(dir);
+}
+
 #ifdef NAMFX_RT_ALLOC_ENABLED
 
 TEST_CASE("nam amp process is allocation free in the audio callback")

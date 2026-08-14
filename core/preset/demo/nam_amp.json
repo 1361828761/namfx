@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "name": "NAM Amp",
+  "name": "NAM Marshall 1959SLP",
   "chain": [
     {
       "slot": 0,
       "category": "amp",
       "impl": "nam",
       "module": "amp.nam",
-      "file": "models/wavenet.nam",
+      "file": "models/n-buna.nam",
       "params": { "gain": 0.5, "bass": 0.5, "middle": 0.5, "treble": 0.5, "output": 0.5 },
       "bypass": false,
       "mix": 1.0
