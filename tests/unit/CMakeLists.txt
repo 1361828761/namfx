@@ -37,6 +37,7 @@ add_executable(namfx_tests
     min_phase_test.cpp
     nam_amp_test.cpp
     scene_engine_test.cpp
+    control_router_test.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)
@@ -48,6 +49,7 @@ target_compile_definitions(namfx_tests PRIVATE NAMFX_DEMO_DIR="${NAMFX_DEMO_DIR_
 file(TO_CMAKE_PATH "${CMAKE_BINARY_DIR}/test-assets" NAMFX_TEST_ASSETS_DIR_CMAKE)
 target_compile_definitions(namfx_tests PRIVATE NAMFX_TEST_ASSETS_DIR="${NAMFX_TEST_ASSETS_DIR_CMAKE}")
 
+target_link_options(namfx_tests PRIVATE "/MAP:namfx_tests.map")
 target_link_libraries(namfx_tests PRIVATE
     namfx_core
     nam_core
