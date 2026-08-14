@@ -10,6 +10,21 @@ namespace {
 constexpr int kTimerMs = 100;
 
 } // namespace
+MainWindow::MainWindow(juce::Component& content)
+    : juce::DocumentWindow("NAM Editor", juce::Colours::darkgrey,
+                           juce::DocumentWindow::allButtons)
+{
+    setContentNonOwned(&content, false);
+    setResizable(true, false);
+    setUsingNativeTitleBar(true);
+    centreWithSize(content.getWidth(), content.getHeight());
+    setVisible(true);
+}
+
+void MainWindow::closeButtonPressed()
+{
+    juce::JUCEApplication::getInstance()->systemRequestedQuit();
+}
 
 NAMEditorApplication::NAMEditorApplication() = default;
 
@@ -17,6 +32,7 @@ void NAMEditorApplication::initialise(const juce::String&)
 {
     demoDir_ = juce::File::getCurrentWorkingDirectory().getChildFile("core/preset/demo");
     buildUi();
+    mainWindow_ = std::make_unique<MainWindow>(asComponent());
     // default audio output setup: 48 kHz, 256 samples
     setAudioChannels(2, 2);
     startTimer(kTimerMs);
@@ -35,17 +51,38 @@ void NAMEditorApplication::systemRequestedQuit()
 
 void NAMEditorApplication::prepareToPlay(int samplesPerBlockExpected, double sampleRate)
 {
+    // scratch buffers are sized here (device/block changes), never inside
+    // the callback
+    zeroIn_.assign(static_cast<std::size_t>(samplesPerBlockExpected), 0.0f);
+    scratchL_.resize(static_cast<std::size_t>(samplesPerBlockExpected));
+    scratchR_.resize(static_cast<std::size_t>(samplesPerBlockExpected));
     host_.prepare(sampleRate, samplesPerBlockExpected);
 }
 
 void NAMEditorApplication::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill)
 {
     const int n = bufferToFill.numSamples;
-    const float* inL = bufferToFill.buffer->getReadPointer(0, bufferToFill.startSample);
-    const float* inR = bufferToFill.buffer->getReadPointer(1, bufferToFill.startSample);
-    float* outL = bufferToFill.buffer->getWritePointer(0, bufferToFill.startSample);
-    float* outR = bufferToFill.buffer->getWritePointer(1, bufferToFill.startSample);
-    host_.process(inL, inR, outL, outR, n);
+    juce::AudioBuffer<float>& buf = *bufferToFill.buffer;
+    const int numCh = buf.getNumChannels();
+    // Channel-safe: mono devices deliver a 1-channel buffer; never index
+    // past the real channel count (JUCE Debug asserts crash otherwise).
+    const float* inL = numCh > 0 ? buf.getReadPointer(0, bufferToFill.startSample)
+                                 : zeroIn_.data();
+    const float* inR = numCh > 1 ? buf.getReadPointer(1, bufferToFill.startSample)
+                                 : zeroIn_.data();
+    if (numCh > 1) {
+        float* outL = buf.getWritePointer(0, bufferToFill.startSample);
+        float* outR = buf.getWritePointer(1, bufferToFill.startSample);
+        host_.process(inL, inR, outL, outR, n);
+    } else if (numCh == 1) {
+        float* outL = buf.getWritePointer(0, bufferToFill.startSample);
+        host_.process(inL, zeroIn_.data(), scratchL_.data(), scratchR_.data(), n);
+        for (int i = 0; i < n; ++i) {
+            outL[i] = scratchL_[static_cast<std::size_t>(i)];
+        }
+    } else {
+        host_.process(zeroIn_.data(), zeroIn_.data(), scratchL_.data(), scratchR_.data(), n);
+    }
 }
 
 void NAMEditorApplication::releaseResources()
