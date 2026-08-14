@@ -54,6 +54,10 @@ target_sources(namfx_editor PRIVATE
 # branch (a plain GUI app, not a plugin)
 target_compile_definitions(namfx_editor PRIVATE JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
 
+# ASIO is disabled in JUCE by default; enable it so ASIO4ALL / MOOER drivers
+# show up as an "ASIO" device type (low-latency path for the GE100)
+target_compile_definitions(namfx_editor PRIVATE JUCE_ASIO=1)
+
 # the demo presets live in the source tree; embed the absolute path so the
 # app finds them no matter what the working directory is (double-click start)
 target_compile_definitions(namfx_editor PRIVATE

@@ -153,6 +153,16 @@ void NAMEditorApplication::initialise(const juce::String&)
     buildUi();
     mainWindow_ = std::make_unique<MainWindow>(*this);
     refreshAudioDeviceControls();
+    // diagnostics: which device types JUCE enumerated (ASIO present?)
+    {
+        const juce::OwnedArray<juce::AudioIODeviceType>& types =
+            deviceManager_.getAvailableDeviceTypes();
+        std::string typeList = "device types:";
+        for (int i = 0; i < types.size(); ++i) {
+            typeList += " [" + types[i]->getTypeName().toStdString() + "]";
+        }
+        crashLog(typeList.c_str());
+    }
     if (err.isNotEmpty()) {
         statusLabel_->setText("audio init: " + err, juce::dontSendNotification);
     }
