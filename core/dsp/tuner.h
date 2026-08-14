@@ -30,6 +30,8 @@ private:
 
     double sampleRate_ = 48000.0;
     int maxBlock_ = 1;
+    int minLag_ = 36;  // E6 at 48k: sampleRate/1319
+    int maxLag_ = 585; // E2 at 48k: sampleRate/82
     std::vector<float> buf_; // ring buffer
     std::vector<float> acf_; // autocorrelation workspace (reused)
     std::vector<float> frame_; // analysis frame (reused, no audio-thread alloc)

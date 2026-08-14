@@ -17,8 +17,13 @@ constexpr float kAcfThreshold = 0.85f; // voicedness
 void Tuner::prepare(double sampleRate)
 {
     sampleRate_ = sampleRate;
+    // candidate-lag range is sample-rate dependent: E6..E2. Clamp the long
+    // end below the window so lags never index past the buffers (at 192 kHz
+    // the E2 lag would exceed the 2048-sample window).
+    minLag_ = std::max(2, static_cast<int>(sampleRate / 1319.0));
+    maxLag_ = std::min(static_cast<int>(sampleRate / 82.0), static_cast<int>(kWindow) - 32);
     buf_.assign(kWindow, 0.0f);
-    acf_.assign(kWindow / 2 + 4, 0.0f);
+    acf_.assign(static_cast<std::size_t>(maxLag_ - minLag_) + 4, 0.0f);
     frame_.assign(kWindow, 0.0f);
     cum_.assign(kWindow + 1, 0.0);
     write_ = 0;
@@ -72,8 +77,8 @@ void Tuner::detect()
     // normalized autocorrelation over candidate lags (E2..E6); overlap-window
     // normalization (prefix sums) so large lags are not underestimated.
     // acf_[i] = norm(lag = minLag-1+i) so every candidate has both neighbors
-    const int minLag = static_cast<int>(sampleRate_ / 1319.0); // E6
-    const int maxLag = static_cast<int>(sampleRate_ / 82.0);   // E2
+    const int minLag = minLag_;
+    const int maxLag = maxLag_;
     // prefix sums of squared samples
     for (std::size_t i = 0; i < kWindow; ++i) {
         const double v = static_cast<double>(frame_[i]);

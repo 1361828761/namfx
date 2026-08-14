@@ -74,6 +74,24 @@ TEST_CASE("tuner stays silent on silence and noise-free detection")
     REQUIRE(tuner.frequency() == 0.0f);
 }
 
+TEST_CASE("tuner handles 96k and 192k device sample rates without overrunning")
+{
+    // regression: the ACF lag range used to be sized for 48k only; at 96/192k
+    // the E2 lag indexed past the fixed buffers (Debug vector bounds -> abort)
+    for (double rate : {96000.0, 192000.0}) {
+        Tuner tuner;
+        tuner.prepare(rate);
+        feed(tuner, sine(static_cast<std::size_t>(rate * 3), 440.0, rate));
+        REQUIRE(tuner.noteDetected());
+        REQUIRE(tuner.midiNote() == 69);
+        REQUIRE(std::fabs(tuner.frequency() - 440.0f) < 2.0f);
+        // silence must also be safe at these rates
+        tuner.prepare(rate);
+        feed(tuner, std::vector<float>(static_cast<std::size_t>(rate), 0.0f));
+        REQUIRE_FALSE(tuner.noteDetected());
+    }
+}
+
 #ifdef NAMFX_RT_ALLOC_ENABLED
 
 TEST_CASE("tuner process is allocation free")
