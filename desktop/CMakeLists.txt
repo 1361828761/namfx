@@ -44,6 +44,7 @@ juce_add_gui_app(namfx_editor
 
 target_sources(namfx_editor PRIVATE
     App/nam_editor_app.cpp
+    App/theme.cpp
     App/tuner_meter.cpp
     Engine/engine_audio_source.cpp
     Engine/engine_host.cpp
@@ -62,6 +63,12 @@ target_compile_definitions(namfx_editor PRIVATE JUCE_ASIO=1)
 # app finds them no matter what the working directory is (double-click start)
 target_compile_definitions(namfx_editor PRIVATE
     "NAMFX_DEMO_DIR=\"${CMAKE_SOURCE_DIR}/core/preset/demo\""
+)
+
+# user NAM model library (scanned at startup; drop .nam files here and they
+# appear in the model picker)
+target_compile_definitions(namfx_editor PRIVATE
+    "NAMFX_NAM_DIR=\"D:/download/NsTone/nam\""
 )
 
 target_include_directories(namfx_editor PRIVATE ${CMAKE_CURRENT_LIST_DIR}/..)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desktop/App/theme.h"
 #include "desktop/App/tuner_meter.h"
 #include "desktop/Engine/engine_audio_source.h"
 #include "desktop/Engine/engine_host.h"
@@ -56,6 +57,11 @@ private:
     void updateTunerReadout();
     void rebuildChainPanel();
     void refreshChainViews();
+    void rebuildAddModuleControls();
+    void refreshModuleList();
+    void refreshAssetList();
+    void refreshModelLibrary();
+    void addSectionLabel(const juce::String& text, int y);
 
     // tunings, indexed 1st string (high E) .. 6th string (low E):
     // 0 = EADGBE (E4 B3 G3 D3 A2 E2), 1 = Drop D (E4 B3 G3 D3 A2 D2)
@@ -69,6 +75,7 @@ private:
 
     EngineHost host_;
     std::unique_ptr<MainWindow> mainWindow_;
+    NAMTheme theme_;
     juce::AudioDeviceManager deviceManager_;
     juce::AudioSourcePlayer player_;
     std::unique_ptr<EngineAudioSource> engineSource_;
@@ -77,7 +84,9 @@ private:
     std::unique_ptr<juce::Label> statusLabel_;
     std::unique_ptr<juce::Label> xrunLabel_; // under/overrun counter
     // chain editing (M5c)
-    std::unique_ptr<juce::ComboBox> addModuleBox_;
+    std::unique_ptr<juce::ComboBox> addGroupBox_;   // module category
+    std::unique_ptr<juce::ComboBox> addModuleBox_;  // module within category
+    std::unique_ptr<juce::ComboBox> addAssetBox_;   // NAM model / IR library
     std::unique_ptr<juce::TextButton> addModuleButton_;
     std::unique_ptr<juce::Viewport> chainPanelViewport_;
     std::unique_ptr<juce::Component> chainPanelContent_;
@@ -103,6 +112,7 @@ private:
     std::unique_ptr<juce::Label> tunerLabel_;
     std::unique_ptr<juce::Label> sceneLabel_;
     juce::File demoDir_;
+    std::vector<juce::File> modelFiles_; // scanned NAM model library
     int tuning_ = 0;
     bool tunerOn_ = true;
     juce::uint32 pendingUnmute_ = 0; // device switch: unmute after warm-up

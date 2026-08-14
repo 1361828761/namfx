@@ -6,6 +6,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <iterator>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -133,6 +134,7 @@ void NAMEditorApplication::initialise(const juce::String&)
 #endif
     std::signal(SIGABRT, &abortHandler);
     crashLog("lifecycle: initialise begin");
+    juce::LookAndFeel::setDefaultLookAndFeel(&theme_);
     demoDir_ = juce::File(NAMFX_DEMO_DIR);
     if (!demoDir_.isDirectory()) {
         // fall back to the working directory (dev launches from the repo root)
@@ -299,6 +301,128 @@ void NAMEditorApplication::loadSelectedPreset()
     } else {
         statusLabel_->setText("load failed: " + juce::String(error), juce::dontSendNotification);
     }
+}
+
+void NAMEditorApplication::refreshModelLibrary()
+{
+    modelFiles_.clear();
+    std::vector<juce::File> dirs;
+    dirs.push_back(juce::File(NAMFX_NAM_DIR));
+    dirs.push_back(demoDir_.getChildFile("models"));
+    dirs.push_back(juce::File::getSpecialLocation(juce::File::currentApplicationFile)
+                       .getParentDirectory()
+                       .getChildFile("models"));
+    for (const juce::File& d : dirs) {
+        if (!d.isDirectory()) {
+            continue;
+        }
+        juce::Array<juce::File> found;
+        d.findChildFiles(found, juce::File::findFiles, false, "*.nam");
+        for (const juce::File& f : found) {
+            modelFiles_.push_back(f);
+        }
+    }
+    // stable, human-friendly order
+    std::sort(modelFiles_.begin(), modelFiles_.end(),
+              [](const juce::File& a, const juce::File& b) {
+                  return a.getFileName().compareNatural(b.getFileName()) < 0;
+              });
+}
+
+void NAMEditorApplication::rebuildAddModuleControls()
+{
+    // module categories map from the module-id prefix
+    struct Group {
+        const char* name;
+        const char* prefix;
+    };
+    static const Group kGroups[] = {
+        {"Amp (NAM)", "nam."},        {"Cabinet", "cab."},
+        {"Distortion", "od."},        {"Compressor", "comp."},
+        {"Noise Gate", "gate."},      {"Modulation", "mod."},
+        {"Delay", "dly."},            {"Reverb", "rvb."},
+        {"Pitch", "pitch."},          {"EQ", "eq."},
+        {"Gain / Tone", ""},
+    };
+    const std::vector<std::string> ids = host_.moduleIds();
+
+    addGroupBox_->clear(juce::dontSendNotification);
+    for (int g = 0; g < static_cast<int>(std::size(kGroups)); ++g) {
+        bool has = false;
+        for (const std::string& id : ids) {
+            if (juce::String(id).startsWith(kGroups[g].prefix)) {
+                has = true;
+                break;
+            }
+        }
+        if (has) {
+            addGroupBox_->addItem(kGroups[g].name, g + 1);
+        }
+    }
+    if (addGroupBox_->getNumItems() > 0) {
+        addGroupBox_->setSelectedId(1, juce::dontSendNotification);
+    }
+    refreshModuleList();
+}
+
+void NAMEditorApplication::refreshModuleList()
+{
+    struct Group {
+        const char* name;
+        const char* prefix;
+    };
+    static const Group kGroups[] = {
+        {"Amp (NAM)", "nam."},        {"Cabinet", "cab."},
+        {"Distortion", "od."},        {"Compressor", "comp."},
+        {"Noise Gate", "gate."},      {"Modulation", "mod."},
+        {"Delay", "dly."},            {"Reverb", "rvb."},
+        {"Pitch", "pitch."},          {"EQ", "eq."},
+        {"Gain / Tone", ""},
+    };
+    const int g = addGroupBox_->getSelectedId() - 1;
+    const std::vector<std::string> ids = host_.moduleIds();
+
+    addModuleBox_->clear(juce::dontSendNotification);
+    if (g < 0 || g >= static_cast<int>(std::size(kGroups))) {
+        return;
+    }
+    for (const std::string& id : ids) {
+        if (juce::String(id).startsWith(kGroups[g].prefix)) {
+            addModuleBox_->addItem(id, static_cast<int>(addModuleBox_->getNumItems()) + 1);
+        }
+    }
+    if (addModuleBox_->getNumItems() > 0) {
+        addModuleBox_->setSelectedId(1, juce::dontSendNotification);
+    }
+    refreshAssetList();
+}
+
+void NAMEditorApplication::refreshAssetList()
+{
+    addAssetBox_->clear(juce::dontSendNotification);
+    const juce::String sel = addModuleBox_->getText();
+    const bool needsAsset = sel.startsWith("nam.") || sel.startsWith("cab.");
+    addAssetBox_->setVisible(needsAsset);
+    if (!needsAsset) {
+        return;
+    }
+    for (std::size_t i = 0; i < modelFiles_.size(); ++i) {
+        addAssetBox_->addItem(modelFiles_[i].getFileName(), static_cast<int>(i + 1));
+    }
+    if (addAssetBox_->getNumItems() > 0) {
+        addAssetBox_->setSelectedId(1, juce::dontSendNotification);
+    }
+}
+
+void NAMEditorApplication::addSectionLabel(const juce::String& text, int y)
+{
+    auto* l = new juce::Label();
+    l->setText(text, juce::dontSendNotification);
+    l->setFont(juce::Font(juce::FontOptions().withHeight(11.0f).withStyleFlags(
+        juce::Font::bold)));
+    l->setColour(juce::Label::textColourId, NAMTheme::textDim());
+    l->setBounds(16, y, 200, 14);
+    addAndMakeVisible(l);
 }
 
 void NAMEditorApplication::rebuildChainPanel()
@@ -474,24 +598,27 @@ void NAMEditorApplication::applyAudioSetup()
 void NAMEditorApplication::buildUi()
 {
     setSize(1280, 720);
+
+    addSectionLabel("PRESET", 8);
     presetBox_ = std::make_unique<juce::ComboBox>();
-    presetBox_->setBounds(16, 16, 360, 28);
+    presetBox_->setBounds(16, 26, 360, 28);
     addAndMakeVisible(*presetBox_);
     presetBox_->onChange = [this] { loadSelectedPreset(); };
 
     loadButton_ = std::make_unique<juce::TextButton>("Load");
-    loadButton_->setBounds(384, 16, 72, 28);
+    loadButton_->setBounds(384, 26, 72, 28);
     addAndMakeVisible(*loadButton_);
     loadButton_->onClick = [this] { loadSelectedPreset(); };
 
     statusLabel_ = std::make_unique<juce::Label>();
-    statusLabel_->setBounds(16, 52, 560, 20);
+    statusLabel_->setBounds(470, 30, 560, 20);
     addAndMakeVisible(*statusLabel_);
 
     xrunLabel_ = std::make_unique<juce::Label>();
-    xrunLabel_->setBounds(580, 52, 200, 20);
+    xrunLabel_->setBounds(1040, 30, 200, 20);
     addAndMakeVisible(*xrunLabel_);
 
+    addSectionLabel("AUDIO", 62);
     // audio device panel: type / device / sample rate / buffer size
     deviceTypeBox_ = std::make_unique<juce::ComboBox>();
     deviceTypeBox_->setBounds(16, 80, 240, 26);
@@ -536,9 +663,10 @@ void NAMEditorApplication::buildUi()
         host_.setBypass(bypassToggle_->getToggleState());
     };
 
+    addSectionLabel("TUNER", 116);
     // tuner panel: tuning selection + graphical deviation meter
     tuningBox_ = std::make_unique<juce::ComboBox>();
-    tuningBox_->setBounds(16, 116, 120, 26);
+    tuningBox_->setBounds(16, 134, 120, 26);
     addAndMakeVisible(*tuningBox_);
     tuningBox_->addItem("EADGBE", 1);
     tuningBox_->addItem("Drop D", 2);
@@ -551,19 +679,15 @@ void NAMEditorApplication::buildUi()
     };
 
     tunerMeter_ = std::make_unique<TunerMeter>();
-    tunerMeter_->setBounds(144, 112, 480, 34);
+    tunerMeter_->setBounds(144, 130, 480, 34);
     addAndMakeVisible(*tunerMeter_);
 
-    // CJK-capable font: JUCE's default typeface has no Chinese glyphs
-    const juce::Font cjk = juce::Font(juce::FontOptions().withName("Microsoft YaHei UI")
-                                          .withHeight(13.0f));
     tunerLabel_ = std::make_unique<juce::Label>();
-    tunerLabel_->setBounds(636, 116, 620, 24);
-    tunerLabel_->setFont(cjk);
+    tunerLabel_->setBounds(636, 134, 620, 24);
     addAndMakeVisible(*tunerLabel_);
 
     tunerToggle_ = std::make_unique<juce::ToggleButton>("Tuner");
-    tunerToggle_->setBounds(16, 150, 88, 24);
+    tunerToggle_->setBounds(16, 168, 88, 24);
     tunerToggle_->setToggleState(true, juce::dontSendNotification);
     addAndMakeVisible(*tunerToggle_);
     tunerToggle_->onClick = [this] {
@@ -575,30 +699,49 @@ void NAMEditorApplication::buildUi()
     };
 
     sceneLabel_ = std::make_unique<juce::Label>();
-    sceneLabel_->setBounds(120, 150, 400, 20);
+    sceneLabel_->setBounds(120, 168, 400, 20);
     addAndMakeVisible(*sceneLabel_);
 
-    // add-module row
+    addSectionLabel("CHAIN", 200);
+    // add-module row: category -> module -> asset (NAM model / IR)
+    addGroupBox_ = std::make_unique<juce::ComboBox>();
+    addGroupBox_->setBounds(16, 218, 150, 26);
+    addAndMakeVisible(*addGroupBox_);
+    addGroupBox_->onChange = [this] { refreshModuleList(); };
+
     addModuleBox_ = std::make_unique<juce::ComboBox>();
-    addModuleBox_->setBounds(16, 176, 220, 26);
+    addModuleBox_->setBounds(174, 218, 170, 26);
     addAndMakeVisible(*addModuleBox_);
-    const std::vector<std::string> ids = host_.moduleIds();
-    for (std::size_t i = 0; i < ids.size(); ++i) {
-        addModuleBox_->addItem(ids[i], static_cast<int>(i + 1));
-    }
-    addModuleBox_->setSelectedId(1, juce::dontSendNotification);
+    addModuleBox_->onChange = [this] { refreshAssetList(); };
+
+    addAssetBox_ = std::make_unique<juce::ComboBox>();
+    addAssetBox_->setBounds(352, 218, 360, 26);
+    addAndMakeVisible(*addAssetBox_);
 
     addModuleButton_ = std::make_unique<juce::TextButton>("Add");
-    addModuleButton_->setBounds(244, 176, 56, 26);
+    addModuleButton_->setBounds(720, 218, 56, 26);
     addAndMakeVisible(*addModuleButton_);
     addModuleButton_->onClick = [this] {
         const int idx = addModuleBox_->getSelectedId();
-        const std::vector<std::string> ids2 = host_.moduleIds();
-        if (idx <= 0 || idx > static_cast<int>(ids2.size())) {
+        if (idx <= 0) {
             return;
         }
+        std::string moduleId = addModuleBox_->getText().toStdString();
+        std::string asset;
+        const bool needsAsset =
+            juce::String(moduleId).startsWith("nam.") || juce::String(moduleId).startsWith("cab.");
+        if (needsAsset) {
+            const int aidx = addAssetBox_->getSelectedId();
+            if (aidx <= 0 || aidx > static_cast<int>(modelFiles_.size())) {
+                statusLabel_->setText("select a model / IR first",
+                                      juce::dontSendNotification);
+                return;
+            }
+            asset = modelFiles_[static_cast<std::size_t>(aidx - 1)].getFullPathName()
+                        .toStdString();
+        }
         std::string error;
-        if (host_.addModuleToChain(ids2[static_cast<std::size_t>(idx - 1)], error)) {
+        if (host_.addModuleToChain(moduleId, asset, error)) {
             refreshChainViews();
         } else {
             statusLabel_->setText("add failed: " + juce::String(error),
@@ -609,11 +752,12 @@ void NAMEditorApplication::buildUi()
     // chain edit panel: one block per slot (name, bypass, per-parameter
     // sliders, delete), scrollable
     chainPanelViewport_ = std::make_unique<juce::Viewport>();
-    chainPanelViewport_->setBounds(16, 208, 1240, 250);
+    chainPanelViewport_->setBounds(16, 252, 1240, 250);
     addAndMakeVisible(*chainPanelViewport_);
     chainPanelContent_ = std::make_unique<juce::Component>();
     chainPanelViewport_->setViewedComponent(chainPanelContent_.get(), false);
 
+    addSectionLabel("OUTPUT", 510);
     // output panel: master / input gain / 3-band EQ / mute
     auto makeSlider = [this](std::unique_ptr<juce::Slider>& s, int x, double min, double max,
                              double value) {
@@ -621,13 +765,13 @@ void NAMEditorApplication::buildUi()
                                            juce::Slider::NoTextBox);
         s->setRange(min, max, 0.1);
         s->setValue(value, juce::dontSendNotification);
-        s->setBounds(x, 464, 130, 18);
+        s->setBounds(x, 530, 130, 18);
         addAndMakeVisible(*s);
     };
     auto makeOutLabel = [this](const juce::String& text, int x) {
         auto* l = new juce::Label();
         l->setText(text, juce::dontSendNotification);
-        l->setBounds(x, 462, 60, 20);
+        l->setBounds(x, 528, 60, 20);
         addAndMakeVisible(l);
     };
 
@@ -662,7 +806,7 @@ void NAMEditorApplication::buildUi()
     };
 
     muteToggle_ = std::make_unique<juce::ToggleButton>("Mute");
-    muteToggle_->setBounds(976, 460, 60, 22);
+    muteToggle_->setBounds(976, 526, 60, 22);
     addAndMakeVisible(*muteToggle_);
     muteToggle_->onClick = [this] {
         host_.output().setMute(muteToggle_->getToggleState());
@@ -673,13 +817,17 @@ void NAMEditorApplication::buildUi()
     chainLabel_->setMultiLine(true);
     chainLabel_->setReadOnly(true);
     chainLabel_->setScrollbarsShown(true);
-    chainLabel_->setBounds(16, 496, 1240, 200);
+    chainLabel_->setBounds(16, 560, 1240, 140);
     addAndMakeVisible(*chainLabel_);
     chainLabel_->setText("(no preset loaded)", juce::dontSendNotification);
+
+    refreshModelLibrary();
+    rebuildAddModuleControls();
 }
 
-void NAMEditorApplication::paint(juce::Graphics&)
+void NAMEditorApplication::paint(juce::Graphics& g)
 {
+    g.fillAll(NAMTheme::bg());
 }
 
 } // namespace desktop

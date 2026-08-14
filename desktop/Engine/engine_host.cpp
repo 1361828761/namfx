@@ -255,7 +255,8 @@ bool EngineHost::rebuildChain(std::vector<audio::SlotDef> slots, std::string& er
     return true;
 }
 
-bool EngineHost::addModuleToChain(const std::string& moduleId, std::string& error)
+bool EngineHost::addModuleToChain(const std::string& moduleId, const std::string& assetFile,
+                                  std::string& error)
 {
     std::lock_guard<std::mutex> lock(chainMutex_);
     if (chain_ == nullptr) {
@@ -266,11 +267,20 @@ bool EngineHost::addModuleToChain(const std::string& moduleId, std::string& erro
         error = "unknown module " + moduleId;
         return false;
     }
+    if ((moduleId == "nam.amp" || moduleId == "cab.ir") && assetFile.empty()) {
+        error = "select an asset (model / IR) for " + moduleId;
+        return false;
+    }
+    if (!assetFile.empty() && !std::ifstream(assetFile).good()) {
+        error = "asset file not found: " + assetFile;
+        return false;
+    }
     std::vector<audio::SlotDef> slots = audio::snapshotChain(*chain_);
     audio::SlotDef def;
     def.category = registry_->categoryOf(moduleId);
     def.impl = implForModule(moduleId);
     def.moduleId = moduleId;
+    def.file = assetFile;
     for (const ParamSpec& spec : registry_->specsFor(moduleId)) {
         def.params.push_back(ParamInit{spec.id, spec.defaultValue});
     }

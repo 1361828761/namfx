@@ -60,8 +60,10 @@ public:
 
     // chain editing (M5c): add a module at the end / remove one by slot;
     // the edit snapshots the live chain (current parameter values), rebuilds
-    // a fresh chain and swaps it in (fade-in, no pop)
-    bool addModuleToChain(const std::string& moduleId, std::string& error);
+    // a fresh chain and swaps it in (fade-in, no pop). assetFile is the
+    // model/IR path for nam.amp / cab.ir (may be empty for dsp modules)
+    bool addModuleToChain(const std::string& moduleId, const std::string& assetFile,
+                          std::string& error);
     bool removeModuleFromChain(int slot, std::string& error);
     std::vector<std::string> moduleIds() const;
 
