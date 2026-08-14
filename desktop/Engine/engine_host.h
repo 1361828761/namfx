@@ -10,6 +10,7 @@
 #include "preset/preset_model.h"
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace namfx {
@@ -47,6 +48,11 @@ public:
     bool uiSetParam(int slot, const std::string& paramId, float value);
     bool uiSetBypass(int slot, bool bypass);
 
+    // UI readouts
+    // control-thread chain summary ("slot: module  param=value ...") for
+    // the UI chain view; reads inside the chain mutex
+    std::string chainSummary() const;
+
     // MIDI input (control thread)
     void handleMidi(const midi::Event& event);
 
@@ -55,10 +61,13 @@ public:
     audio::OutputStage& output() { return output_; }
     audio::ControlRouter& router() { return router_; }
     audio::SceneEngine& scenes() { return scenes_; }
-    const audio::Chain* chain() const { return chain_; }
-    bool hasChain() const { return chain_ != nullptr; }
 
 private:
+    // guards chain_ against device reconfiguration (prepare() re-prepares
+    // the live chain) racing preset loads; never taken inside the audio
+    // callback (process() does not touch chain_)
+    mutable std::mutex chainMutex_;
+
     std::shared_ptr<ModuleRegistry> registry_;
     audio::AudioGraph graph_;
     audio::SceneEngine scenes_;
@@ -67,7 +76,7 @@ private:
     midi::MidiRouter midi_;
     midi::MidiRouter::Actions midiActions_;
     dsp::Tuner tuner_;
-    const audio::Chain* chain_ = nullptr; // points at the pending/new chain
+    audio::Chain* chain_ = nullptr; // points at the pending/new chain
     bool prepared_ = false;
     double sampleRate_ = 48000.0;
     int blockSize_ = 64;

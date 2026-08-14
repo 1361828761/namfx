@@ -2,6 +2,73 @@
 
 #include <juce_core/juce_core.h>
 
+#include <csignal>
+#include <cstdio>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <dbghelp.h>
+#endif
+
+// crash diagnostics (global scope: the custom main below needs qualified
+// access): the headless test runs saw the app exit with code 3 (abort) and
+// no WER record; log SEH/abort/lifecycle events to a file so the failure
+// point is identifiable. Control-thread only.
+void crashLog(const char* msg)
+{
+    FILE* f = std::fopen("namfx_crash.log", "a");
+    if (f != nullptr) {
+        std::fprintf(f, "%s\n", msg);
+        std::fclose(f);
+    }
+}
+
+#ifdef _WIN32
+LONG WINAPI sehHandler(EXCEPTION_POINTERS* ep)
+{
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "SEH code=0x%08lX addr=%p",
+                  static_cast<unsigned long>(ep->ExceptionRecord->ExceptionCode),
+                  ep->ExceptionRecord->ExceptionAddress);
+    crashLog(buf);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif
+
+void abortHandler(int)
+{
+#ifdef _WIN32
+    void* frames[48];
+    const USHORT count = CaptureStackBackTrace(0, 48, frames, nullptr);
+    FILE* f = std::fopen("namfx_crash.log", "a");
+    if (f != nullptr) {
+        std::fprintf(f, "abort() stack (%u frames):\n", static_cast<unsigned>(count));
+        SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+        if (SymInitialize(GetCurrentProcess(), nullptr, TRUE)) {
+            for (int i = 0; i < count; ++i) {
+                char symBuf[sizeof(SYMBOL_INFO) + 256];
+                auto* sym = reinterpret_cast<SYMBOL_INFO*>(symBuf);
+                sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+                sym->MaxNameLen = 256;
+                DWORD64 disp = 0;
+                if (SymFromAddr(GetCurrentProcess(), reinterpret_cast<DWORD64>(frames[i]), &disp, sym)) {
+                    std::fprintf(f, "  %02d 0x%llX %s+0x%llX\n", i,
+                                 reinterpret_cast<unsigned long long>(frames[i]), sym->Name,
+                                 static_cast<unsigned long long>(disp));
+                } else {
+                    std::fprintf(f, "  %02d 0x%llX (no sym)\n", i,
+                                 reinterpret_cast<unsigned long long>(frames[i]));
+                }
+            }
+            SymCleanup(GetCurrentProcess());
+        }
+        std::fclose(f);
+    }
+#else
+    crashLog("abort()");
+#endif
+}
+
 namespace namfx {
 namespace desktop {
 
@@ -30,6 +97,11 @@ NAMEditorApplication::NAMEditorApplication() = default;
 
 void NAMEditorApplication::initialise(const juce::String&)
 {
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(&sehHandler);
+#endif
+    std::signal(SIGABRT, &abortHandler);
+    crashLog("lifecycle: initialise begin");
     demoDir_ = juce::File::getCurrentWorkingDirectory().getChildFile("core/preset/demo");
     buildUi();
     mainWindow_ = std::make_unique<MainWindow>(asComponent());
@@ -37,10 +109,12 @@ void NAMEditorApplication::initialise(const juce::String&)
     setAudioChannels(2, 2);
     startTimer(kTimerMs);
     rebuildPresetList();
+    crashLog("lifecycle: initialise done");
 }
 
 void NAMEditorApplication::shutdown()
 {
+    crashLog("lifecycle: shutdown");
     shutdownAudio();
 }
 
@@ -91,6 +165,9 @@ void NAMEditorApplication::releaseResources()
 
 void NAMEditorApplication::timerCallback()
 {
+    if (++aliveTicks_ % 50 == 0) {
+        crashLog("alive tick"); // 5 s heartbeat for crash diagnostics
+    }
     const dsp::Tuner& tuner = host_.tuner();
     if (tuner.noteDetected()) {
         tunerLabel_->setText("Tuner: " + juce::String(tuner.frequency(), 1) + " Hz, "
@@ -141,6 +218,7 @@ void NAMEditorApplication::loadSelectedPreset()
                                      demoDir_.getFullPathName().toStdString(), error);
     if (ok) {
         statusLabel_->setText("loaded " + file.getFileName(), juce::dontSendNotification);
+        chainLabel_->setText(juce::String(host_.chainSummary()), juce::dontSendNotification);
     } else {
         statusLabel_->setText("load failed: " + juce::String(error), juce::dontSendNotification);
     }
@@ -148,32 +226,43 @@ void NAMEditorApplication::loadSelectedPreset()
 
 void NAMEditorApplication::buildUi()
 {
-    setSize(560, 220);
+    setSize(640, 360);
     presetBox_ = std::make_unique<juce::ComboBox>();
-    presetBox_->setBounds(16, 16, 240, 28);
+    presetBox_->setBounds(16, 16, 280, 28);
     addAndMakeVisible(*presetBox_);
     presetBox_->onChange = [this] { loadSelectedPreset(); };
 
     loadButton_ = std::make_unique<juce::TextButton>("Load");
-    loadButton_->setBounds(264, 16, 72, 28);
+    loadButton_->setBounds(304, 16, 72, 28);
     addAndMakeVisible(*loadButton_);
     loadButton_->onClick = [this] { loadSelectedPreset(); };
 
     statusLabel_ = std::make_unique<juce::Label>();
-    statusLabel_->setBounds(16, 56, 520, 24);
+    statusLabel_->setBounds(16, 56, 600, 24);
     addAndMakeVisible(*statusLabel_);
 
     tunerLabel_ = std::make_unique<juce::Label>();
-    tunerLabel_->setBounds(16, 96, 320, 24);
+    tunerLabel_->setBounds(16, 88, 320, 24);
     addAndMakeVisible(*tunerLabel_);
 
     sceneLabel_ = std::make_unique<juce::Label>();
-    sceneLabel_->setBounds(16, 128, 320, 24);
+    sceneLabel_->setBounds(340, 88, 280, 24);
     addAndMakeVisible(*sceneLabel_);
+
+    // chain view: what is actually loaded (module per slot + parameter
+    // values), read from the engine after a load
+    chainLabel_ = std::make_unique<juce::TextEditor>();
+    chainLabel_->setMultiLine(true);
+    chainLabel_->setReadOnly(true);
+    chainLabel_->setScrollbarsShown(true);
+    chainLabel_->setBounds(16, 120, 600, 210);
+    addAndMakeVisible(*chainLabel_);
+    chainLabel_->setText("(no preset loaded)", juce::dontSendNotification);
 }
 
 } // namespace desktop
 } // namespace namfx
 
-// JUCE's application macro needs the class name at global scope
+// JUCE's application macro needs the class name at global scope; the crash
+// handlers are installed in initialise() (process-wide)
 START_JUCE_APPLICATION(namfx::desktop::NAMEditorApplication)

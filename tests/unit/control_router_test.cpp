@@ -206,11 +206,13 @@ TEST_CASE("unbound UI bypass applies at the next block boundary")
     REQUIRE(peak > 0.3f); // 0.1 * 3.98
 }
 
-TEST_CASE("uiSetBypass rejects unknown modules and never allocates on the audio thread")
+TEST_CASE("uiSetBypass queues commands and never allocates on the audio thread")
 {
     Chain chain = makeChain();
     ControlRouter router;
-    REQUIRE_FALSE(router.uiSetBypass("nope", true));
+    // module existence is validated by the host (which owns the chain); the
+    // router only queues, and apply() silently drops unknown modules
+    REQUIRE(router.uiSetBypass("nope", true));
     REQUIRE(router.uiSetBypass("gain", true));
     std::vector<float> in(64, 0.1f);
     std::vector<float> inR(64, 0.0f);

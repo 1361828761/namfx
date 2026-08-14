@@ -62,7 +62,9 @@ private:
     std::unique_ptr<juce::Label> statusLabel_;
     std::unique_ptr<juce::Label> tunerLabel_;
     std::unique_ptr<juce::Label> sceneLabel_;
+    std::unique_ptr<juce::TextEditor> chainLabel_;
     juce::File demoDir_;
+    int aliveTicks_ = 0; // crash-diagnostic heartbeat counter
     // audio-callback scratch (prepared once; zero allocation inside the
     // callback): mono devices only deliver one channel, so the missing
     // channel is zero-fed and the processed result is collapsed back
