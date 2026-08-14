@@ -25,6 +25,7 @@
 #include "preset/preset_io.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -130,13 +131,26 @@ void EngineHost::process(const float* inL, const float* inR, float* outL, float*
     // drivers deliver callbacks larger than the expected block; split into
     // blockSize_ chunks so Chain::process never exceeds maxBlock_ (a Debug
     // assert / Release overrun otherwise).
+    float inPeak = 0.0f;
+    float outPeak = 0.0f;
     const int step = blockSize_ > 0 ? blockSize_ : n;
     for (int off = 0; off < n; off += step) {
         const int count = std::min(step, n - off);
         graph_.processBlock(inL + off, inR + off, outL + off, outR + off, count);
         output_.process(outL + off, outR + off, outL + off, outR + off, count);
         tuner_.process(inL + off, count);
+        for (int i = 0; i < count; ++i) {
+            const float a = std::fabs(inL[off + i]);
+            const float b = std::fabs(outL[off + i]);
+            inPeak = std::max(inPeak, a);
+            outPeak = std::max(outPeak, b);
+        }
     }
+    // level readouts for the UI: block peak with exponential decay
+    const float prevIn = inLevel_.load(std::memory_order_relaxed);
+    const float prevOut = outLevel_.load(std::memory_order_relaxed);
+    inLevel_.store(std::max(inPeak, prevIn * 0.999f), std::memory_order_relaxed);
+    outLevel_.store(std::max(outPeak, prevOut * 0.999f), std::memory_order_relaxed);
 }
 
 bool EngineHost::loadPreset(const std::string& jsonPath, const std::string& baseDir,
@@ -172,7 +186,9 @@ bool EngineHost::loadPresetText(const std::string& jsonText, const std::string& 
         // lands); chain_ stays valid because the graph owns the chain
         std::lock_guard<std::mutex> lock(chainMutex_);
         chain_ = chain.get();
+        midi_.setChain(*chain_);
         graph_.requestSwap(std::move(chain));
+        scenesDefs_ = preset.scenes;
         if (!scenes_.load(preset.scenes, *chain_)) {
             error = "scene bank rejected";
             return false;
@@ -184,6 +200,54 @@ bool EngineHost::loadPresetText(const std::string& jsonText, const std::string& 
 void EngineHost::recallScene(int index)
 {
     scenes_.recall(index);
+}
+
+bool EngineHost::saveScene(int index, const std::string& name, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    if (index < 0 || index > static_cast<int>(scenesDefs_.size())) {
+        error = "bad scene index";
+        return false;
+    }
+    if (index == static_cast<int>(scenesDefs_.size())
+        && scenesDefs_.size() >= static_cast<std::size_t>(audio::SceneEngine::kMaxScenes)) {
+        error = "scene limit reached (8)";
+        return false;
+    }
+    // snapshot the live chain into a scene definition
+    preset::SceneDef def;
+    def.name = name.empty() ? ("Scene " + std::to_string(index + 1)) : name;
+    const std::vector<audio::SlotDef> slots = audio::snapshotChain(*chain_);
+    for (const audio::SlotDef& s : slots) {
+        preset::SceneOverride ov;
+        ov.moduleId = s.moduleId;
+        ov.bypass = s.bypass;
+        ov.params = s.params; // current (ramped) values
+        def.overrides.push_back(std::move(ov));
+    }
+    const auto backup = scenesDefs_;
+    if (index == static_cast<int>(scenesDefs_.size())) {
+        scenesDefs_.push_back(std::move(def));
+    } else {
+        scenesDefs_[static_cast<std::size_t>(index)] = std::move(def);
+    }
+    if (!scenes_.load(scenesDefs_, *chain_)) {
+        scenesDefs_ = backup;
+        scenes_.load(backup, *chain_);
+        error = "scene rejected by the engine";
+        return false;
+    }
+    return true;
+}
+
+std::vector<preset::SceneDef> EngineHost::sceneDefs() const
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    return scenesDefs_;
 }
 
 bool EngineHost::uiSetParam(int slot, const std::string& paramId, float value)
@@ -251,6 +315,7 @@ bool EngineHost::rebuildChain(std::vector<audio::SlotDef> slots, std::string& er
         chain->prepare(sampleRate_, blockSize_);
         chain->startFadeIn(); // the swap eases in: no pop
         chain_ = chain.get();
+        midi_.setChain(*chain_);
         graph_.requestSwap(std::move(chain));
         return true;
     } catch (const std::exception& e) {
@@ -440,6 +505,46 @@ std::vector<EngineHost::SlotInfo> EngineHost::chainInfo() const
 void EngineHost::handleMidi(const midi::Event& event)
 {
     midi_.handleEvent(event, router_, scenes_, midiActions_);
+}
+
+bool EngineHost::midiLearnParam(int cc, const std::string& moduleId, const std::string& paramId,
+                                std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    if (cc < 0 || cc > 127) {
+        error = "CC out of range";
+        return false;
+    }
+    if (!midi_.learnBind(router_, *chain_, cc, moduleId, paramId)) {
+        error = "binding rejected (CC in use or unknown param)";
+        return false;
+    }
+    return true;
+}
+
+bool EngineHost::midiLearnScene(int cc, int sceneIndex, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (cc < 0 || cc > 127 || sceneIndex < 1 || sceneIndex > audio::SceneEngine::kMaxScenes) {
+        error = "CC / scene out of range";
+        return false;
+    }
+    if (!midi_.bindScene(cc, sceneIndex)) {
+        error = "binding rejected (CC in use)";
+        return false;
+    }
+    return true;
+}
+
+void EngineHost::midiClearBind(int cc)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    midi_.clearBind(cc);
+    midi_.clearScene(cc);
 }
 
 } // namespace desktop

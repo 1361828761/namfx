@@ -48,12 +48,21 @@ public:
     int sceneCount() const { return scenes_.sceneCount(); }
     const std::string& sceneName(int index) const { return scenes_.sceneName(index); }
 
+    // scene editing: snapshot the live chain (all module params + bypasses)
+    // into a scene definition; index == sceneCount() appends (cap 8),
+    // otherwise the scene at index is overwritten
+    bool saveScene(int index, const std::string& name, std::string& error);
+    std::vector<preset::SceneDef> sceneDefs() const;
+
     // UI writes (through the router: bound params queue, unbound apply at
     // the next block); slot is the chain slot index
     bool uiSetParam(int slot, const std::string& paramId, float value);
     bool uiSetBypass(int slot, bool bypass);
 
     // UI readouts
+    // smoothed input/output levels (0..1 peak, audio-thread maintained)
+    float inputLevel() const { return inLevel_.load(std::memory_order_relaxed); }
+    float outputLevel() const { return outLevel_.load(std::memory_order_relaxed); }
     // control-thread chain summary ("slot: module  param=value ...") for
     // the UI chain view; reads inside the chain mutex
     std::string chainSummary() const;
@@ -86,6 +95,15 @@ public:
     // MIDI input (control thread)
     void handleMidi(const midi::Event& event);
 
+    // MIDI learning: bind a CC to a parameter of the live chain or to a
+    // scene (1..8); clear removes both kinds for that CC
+    bool midiLearnParam(int cc, const std::string& moduleId, const std::string& paramId,
+                        std::string& error);
+    bool midiLearnScene(int cc, int sceneIndex, std::string& error);
+    void midiClearBind(int cc);
+    int midiParamBindCount() const { return midi_.ccParamCount(); }
+    int midiSceneBindCount() const { return midi_.ccSceneCount(); }
+
     // UI readouts
     const dsp::Tuner& tuner() const { return tuner_; }
     audio::OutputStage& output() { return output_; }
@@ -110,7 +128,10 @@ private:
     midi::MidiRouter::Actions midiActions_;
     dsp::Tuner tuner_;
     audio::Chain* chain_ = nullptr; // points at the pending/new chain
+    std::vector<preset::SceneDef> scenesDefs_; // scene bank source (UI edits)
     std::atomic<bool> bypass_{false};
+    std::atomic<float> inLevel_{0.0f};
+    std::atomic<float> outLevel_{0.0f};
     bool prepared_ = false;
     double sampleRate_ = 48000.0;
     int blockSize_ = 64;

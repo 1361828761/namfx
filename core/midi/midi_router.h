@@ -44,6 +44,10 @@ public:
                    const std::string& moduleId, const std::string& paramId);
     void clearBind(int cc);
 
+    // the host must refresh this after every chain swap (the stored pointer
+    // is used by clearBind to unbind from the ControlRouter)
+    void setChain(const audio::Chain& chain) { chain_ = &chain; }
+
     // bind a CC number to a scene (1..SceneEngine::kMaxScenes); false when
     // the CC is already bound to a parameter
     bool bindScene(int cc, int sceneIndex);
