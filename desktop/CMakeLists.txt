@@ -44,6 +44,7 @@ juce_add_gui_app(namfx_editor
 
 target_sources(namfx_editor PRIVATE
     App/nam_editor_app.cpp
+    Engine/engine_audio_source.cpp
     Engine/engine_host.cpp
 )
 
@@ -67,6 +68,8 @@ target_link_libraries(namfx_editor PRIVATE
 if(MSVC)
     # /Z7 (embedded debug info) bypasses the shared-PDB clash: JUCE's
     # juce_disable_default_flags() strips /FS and the CMake-level
-    # DebugInformationFormat property, so force it on the command line
-    target_compile_options(namfx_editor PRIVATE /Z7 /W1)
+    # DebugInformationFormat property, so force it on the command line;
+    # /utf-8: the editor UI strings are Chinese (UTF-8), the system
+    # codepage (GBK) would misread the bytes
+    target_compile_options(namfx_editor PRIVATE /Z7 /W1 /utf-8)
 endif()

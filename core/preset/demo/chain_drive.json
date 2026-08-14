@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "name": "Drive Chain",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "od.ts808",
+      "params": { "drive": 6.0, "tone": 5.0, "level": 0.0 },
+      "bypass": false,
+      "mix": 1.0
+    },
+    {
+      "slot": 1,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "eq.ge7",
+      "params": {
+        "band100": 0.6,
+        "band200": 0.6,
+        "band400": 0.55,
+        "band800": 0.5,
+        "band1600": 0.45,
+        "band3200": 0.4,
+        "band6400": 0.4,
+        "level": 0.5
+      },
+      "bypass": false,
+      "mix": 1.0
+    },
+    {
+      "slot": 2,
+      "category": "cab",
+      "impl": "ir",
+      "module": "cab.ir",
+      "file": "irs/cab_clean.wav",
+      "params": { "gain": 0.5 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}
