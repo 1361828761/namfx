@@ -211,6 +211,16 @@ int Chain::slotIndexOf(const std::string& moduleId) const
     return -1;
 }
 
+const std::string& Chain::moduleIdOf(int slotIndex) const
+{
+    for (const SlotRuntime& runtime : slots_) {
+        if (runtime.def.slot == slotIndex) {
+            return runtime.def.moduleId;
+        }
+    }
+    throw std::out_of_range("chain: no slot with index " + std::to_string(slotIndex));
+}
+
 std::size_t Chain::paramIndexOf(int slotIndex, const std::string& paramId) const
 {
     for (const SlotRuntime& runtime : slots_) {

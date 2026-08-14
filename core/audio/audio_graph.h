@@ -24,6 +24,11 @@ public:
     void processBlock(const float* inL, const float* inR, float* outL, float* outR, int n);
     bool hasPending() const;
 
+    // control-thread read of the live chain (null when none loaded); the
+    // pointer stays valid until the next swap lands, callers must re-fetch
+    // after requestSwap
+    const Chain* current() const;
+
 private:
     std::shared_ptr<const ModuleRegistry> registry_;
     std::atomic<Chain*> pending_{nullptr};

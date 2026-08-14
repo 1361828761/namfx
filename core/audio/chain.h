@@ -36,6 +36,7 @@ public:
     // control-thread lookup helpers for the scene engine (pre-resolve ids
     // to indices so the audio-thread application path never touches strings)
     int slotIndexOf(const std::string& moduleId) const;
+    const std::string& moduleIdOf(int slotIndex) const;
     std::size_t paramIndexOf(int slotIndex, const std::string& paramId) const;
     const std::vector<ParamSpec>& specsOf(int slotIndex) const;
 

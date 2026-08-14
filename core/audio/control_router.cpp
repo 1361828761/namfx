@@ -133,6 +133,15 @@ bool ControlRouter::uiSet(const std::string& moduleId, const std::string& paramI
     return uiQueue_.push(cmd);
 }
 
+bool ControlRouter::uiSetBypass(const std::string& moduleId, bool bypass)
+{
+    UiCommand cmd;
+    cmd.moduleId = moduleId;
+    cmd.value = bypass ? 1.0f : 0.0f;
+    cmd.isBypass = true;
+    return uiQueue_.push(cmd);
+}
+
 void ControlRouter::apply(Chain& chain, int frames)
 {
     tick_ += frames;
@@ -143,6 +152,14 @@ void ControlRouter::apply(Chain& chain, int frames)
     // queue the value (deep-1), unbound write straight to the store target;
     // no allocation on this thread
     while (uiQueue_.pop(uiCmdBuf_)) {
+        if (uiCmdBuf_.isBypass) {
+            // bypass flips fade state: audio-thread only, like scene recall
+            const int slot = chain.slotIndexOf(uiCmdBuf_.moduleId);
+            if (slot >= 0) {
+                chain.setBypassByIndex(slot, uiCmdBuf_.value != 0.0f);
+            }
+            continue;
+        }
         if (table != nullptr) {
             const auto it = table->index.find(uiCmdBuf_.key);
             if (it != table->index.end()) {

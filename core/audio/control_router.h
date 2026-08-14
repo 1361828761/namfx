@@ -51,6 +51,11 @@ public:
     // their value queued (deep-1) until the source is released
     bool uiSet(const std::string& moduleId, const std::string& paramId, float value);
 
+    // UI bypass write: same queue, applied at the block boundary on the
+    // audio thread (bypass flips module fade state, so it must not be
+    // touched from the control thread)
+    bool uiSetBypass(const std::string& moduleId, bool bypass);
+
     // ---- audio thread (block boundary, after SceneEngine::apply) --------
     void apply(Chain& chain, int frames);
 
@@ -70,6 +75,7 @@ private:
         std::string moduleId;
         std::string paramId;
         float value = 0.0f;
+        bool isBypass = false;
     };
     struct Pending {
         bool active = false;

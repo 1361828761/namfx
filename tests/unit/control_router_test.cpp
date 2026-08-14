@@ -174,5 +174,56 @@ TEST_CASE("control router apply is allocation free on the audio thread")
     }
 }
 
+TEST_CASE("unbound UI bypass applies at the next block boundary")
+{
+    Chain chain = makeChain();
+    ControlRouter router;
+    REQUIRE(router.uiSet("gain", "gain", 12.0f)); // +12 dB, loud path
+    runBlocks(chain, router, 10);
+    // bypass the gain module: output must fall back to the dry input
+    REQUIRE(router.uiSetBypass("gain", true));
+    runBlocks(chain, router, 200); // covers the 1 ms fade
+    std::vector<float> in(64, 0.1f);
+    std::vector<float> inR(64, 0.0f);
+    std::vector<float> outL(64, 0.0f);
+    std::vector<float> outR(64, 0.0f);
+    router.apply(chain, 64);
+    chain.process(in.data(), inR.data(), outL.data(), outR.data(), 64);
+    float peak = 0.0f;
+    for (float x : outL) {
+        peak = std::max(peak, std::fabs(x));
+    }
+    REQUIRE(std::fabs(peak - 0.1f) < 0.01f); // dry passthrough
+    // unbypass restores the loud path
+    REQUIRE(router.uiSetBypass("gain", false));
+    runBlocks(chain, router, 200);
+    router.apply(chain, 64);
+    chain.process(in.data(), inR.data(), outL.data(), outR.data(), 64);
+    peak = 0.0f;
+    for (float x : outL) {
+        peak = std::max(peak, std::fabs(x));
+    }
+    REQUIRE(peak > 0.3f); // 0.1 * 3.98
+}
+
+TEST_CASE("uiSetBypass rejects unknown modules and never allocates on the audio thread")
+{
+    Chain chain = makeChain();
+    ControlRouter router;
+    REQUIRE_FALSE(router.uiSetBypass("nope", true));
+    REQUIRE(router.uiSetBypass("gain", true));
+    std::vector<float> in(64, 0.1f);
+    std::vector<float> inR(64, 0.0f);
+    std::vector<float> outL(64, 0.0f);
+    std::vector<float> outR(64, 0.0f);
+    {
+        namfx::rt::ScopedAllocGuard guard;
+        for (int b = 0; b < 50; ++b) {
+            router.apply(chain, 64);
+        }
+        REQUIRE_FALSE(guard.violated());
+    }
+}
+
 #ifdef NAMFX_RT_ALLOC_ENABLED
 #endif

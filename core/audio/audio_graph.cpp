@@ -52,5 +52,10 @@ bool AudioGraph::hasPending() const
     return pending_.load(std::memory_order_acquire) != nullptr;
 }
 
+const Chain* AudioGraph::current() const
+{
+    return slots_[current_.load(std::memory_order_acquire)].get();
+}
+
 } // namespace audio
 } // namespace namfx
