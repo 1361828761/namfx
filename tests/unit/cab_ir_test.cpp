@@ -148,8 +148,9 @@ TEST_CASE("cab ir convolves within -100 dB of the double reference")
     float dummyR = 0.0f;
     mod->process(in.data(), &dummyR, out.data(), &dummyR, static_cast<int>(in.size()));
 
-    // gain 0.5 -> 0 dB (no scale); -100 dB = 1e-5 relative to peak
-    const std::vector<double> want = referenceConv(in, ir);
+    // assets are peak-normalized to 1.0 on load; gain 0.5 -> 0 dB (no scale)
+    const std::vector<float> normIr = {1.0f, 0.5f, 0.25f, -0.125f, 0.0625f};
+    const std::vector<double> want = referenceConv(in, normIr);
     REQUIRE(maxAbsError(out, want) < 1e-5);
     std::filesystem::remove_all(dir);
 }
@@ -181,9 +182,17 @@ TEST_CASE("cab ir resamples a 24 kHz IR to the engine rate")
     float dummyR = 0.0f;
     mod->process(in.data(), &dummyR, out.data(), &dummyR, static_cast<int>(in.size()));
 
-    // reference: double resample + double convolution
+    // reference: double resample + double convolution, peak-normalized
     const std::vector<float> ir48 = namfx::ir::resampleLinear(ir, 24000.0, 48000.0);
-    const std::vector<double> want = referenceConv(in, ir48);
+    float peak = 0.0f;
+    for (float v : ir48) {
+        peak = std::max(peak, std::fabs(v));
+    }
+    std::vector<float> normIr(ir48.size());
+    for (std::size_t i = 0; i < ir48.size(); ++i) {
+        normIr[i] = ir48[i] / peak;
+    }
+    const std::vector<double> want = referenceConv(in, normIr);
     REQUIRE(maxAbsError(out, want) < 1e-5);
     std::filesystem::remove_all(dir);
 }
@@ -293,9 +302,9 @@ TEST_CASE("cab ir loads through the chain with a preset file field")
     std::vector<float> out(1000, 0.0f);
     in[0] = 1.0f;
     chain.process(in.data(), in.data(), out.data(), out.data(), 1000);
-    // impulse convolved with [0.5, 0.25] at 0 dB gain
-    REQUIRE(std::fabs(out[0] - 0.5f) < 1e-5f);
-    REQUIRE(std::fabs(out[1] - 0.25f) < 1e-5f);
+    // impulse convolved with peak-normalized [1.0, 0.5] at 0 dB gain
+    REQUIRE(std::fabs(out[0] - 1.0f) < 1e-5f);
+    REQUIRE(std::fabs(out[1] - 0.5f) < 1e-5f);
     std::filesystem::remove_all(dir);
 }
 

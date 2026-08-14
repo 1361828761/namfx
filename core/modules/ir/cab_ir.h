@@ -1,5 +1,6 @@
 #pragma once
 
+#include "modules/ir/partitioned_conv.h"
 #include "modules/ir/wav_io.h"
 #include "modules/module_base.h"
 
@@ -39,6 +40,10 @@ private:
     std::vector<float> ir_;
     std::vector<float> buf_;
     int bufPos_ = 0;
+    bool usePartitioned_ = false;
+    ir::PartitionedConvolver partitioned_;
+    std::vector<float> blockWet_;
+    int maxBlock_ = 64;
 
     float fs_ = 48000.0f;
     float gain_ = 0.5f;
@@ -60,6 +65,7 @@ private:
     float lpY2_ = 0.0f;
 
     static constexpr std::size_t kMaxIrSamples = 65536;
+    static constexpr std::size_t kDirectLimit = 4096; // longer IRs go partitioned
 };
 
 } // namespace namfx

@@ -37,21 +37,41 @@ bool CabIrModule::loadAsset(const std::string& path)
     return true;
 }
 
-void CabIrModule::prepare(double sampleRate, int)
+void CabIrModule::prepare(double sampleRate, int maxBlockSize)
 {
     const float f = static_cast<float>(sampleRate);
     smoothK_ = 1.0f - std::exp(-1.0f / (0.01f * f));
     fs_ = f;
+    maxBlock_ = std::max(maxBlockSize, 1);
 
     if (assetLoaded_) {
         ir_ = ir::resampleLinear(rawIr_, rawRate_, sampleRate);
+        // normalize peak to 1.0 so the 0 dB default gain is safe for any
+        // measured impulse response (measured IR gain is meaningless)
+        float peak = 0.0f;
+        for (float v : ir_) {
+            peak = std::max(peak, std::fabs(v));
+        }
+        if (peak > 1e-12f) {
+            for (float& v : ir_) {
+                v /= peak;
+            }
+        }
     } else {
         ir_.clear();
     }
     if (ir_.empty()) {
         ir_.assign(1, 1.0f); // degenerate unit IR keeps the chain running
     }
-    buf_.assign(ir_.size(), 0.0f);
+
+    usePartitioned_ = ir_.size() > kDirectLimit;
+    if (usePartitioned_) {
+        // uniform partition block 1024 (~21 ms latency at 48k), Gardner 1995
+        partitioned_.prepare(ir_, 1024);
+        blockWet_.assign(static_cast<std::size_t>(maxBlock_), 0.0f);
+    } else {
+        buf_.assign(ir_.size(), 0.0f);
+    }
 
     reset();
     gainSm_ = gain_;
@@ -70,6 +90,11 @@ void CabIrModule::process(const float* inL, const float*, float* outL, float*, i
     }
     const int irLen = static_cast<int>(ir_.size());
     constexpr float kTwoPi = 6.28318530717958647692f;
+
+    float wet = 0.0f;
+    if (usePartitioned_) {
+        partitioned_.process(inL, n, blockWet_.data());
+    }
     for (int i = 0; i < n; ++i) {
         gainSm_ += smoothK_ * (gain_ - gainSm_);
         lowcutSm_ += smoothK_ * (lowcut_ - lowcutSm_);
@@ -77,26 +102,31 @@ void CabIrModule::process(const float* inL, const float*, float* outL, float*, i
         // gain 0..1 -> -12..+12 dB (0.5 = 0 dB neutral)
         const float gainLin = std::pow(10.0f, (-12.0f + 24.0f * gainSm_) / 20.0f);
 
-        const float x = inL[i];
-        buf_[static_cast<std::size_t>(bufPos_)] = x;
-        bufPos_ = (bufPos_ + 1) % irLen;
+        if (usePartitioned_) {
+            wet = blockWet_[static_cast<std::size_t>(i)];
+        } else {
+            const float x = inL[i];
+            buf_[static_cast<std::size_t>(bufPos_)] = x;
+            bufPos_ = (bufPos_ + 1) % irLen;
 
-        float acc = 0.0f;
-        int readPos = bufPos_ - 1;
-        if (readPos < 0) {
-            readPos += irLen;
-        }
-        for (int k = 0; k < irLen; ++k) {
-            acc += ir_[static_cast<std::size_t>(k)] * buf_[static_cast<std::size_t>(readPos)];
-            --readPos;
+            float acc = 0.0f;
+            int readPos = bufPos_ - 1;
             if (readPos < 0) {
                 readPos += irLen;
             }
+            for (int k = 0; k < irLen; ++k) {
+                acc += ir_[static_cast<std::size_t>(k)] * buf_[static_cast<std::size_t>(readPos)];
+                --readPos;
+                if (readPos < 0) {
+                    readPos += irLen;
+                }
+            }
+            wet = acc;
         }
 
         // tone shaping (2nd order Butterworth), fully bypassed at the
         // default settings so the kernel passes exactly
-        float shaped = acc;
+        float shaped = wet;
         if (lowcutSm_ > 0.001f) {
             const float hpFc = 20.0f * std::pow(10.0f, 2.0f * lowcutSm_);
             const float hpW0 = kTwoPi * hpFc / fs_;
@@ -109,10 +139,10 @@ void CabIrModule::process(const float* inL, const float*, float* outL, float*, i
             const float hpa1 = -2.0f * hpCos / hpA0;
             const float hpa2 = (1.0f - hpAlpha) / hpA0;
 
-            const float hpOut = hpb0 * acc + hpb1 * hpX1_ + hpb2 * hpX2_ - hpa1 * hpY1_
+            const float hpOut = hpb0 * wet + hpb1 * hpX1_ + hpb2 * hpX2_ - hpa1 * hpY1_
                 - hpa2 * hpY2_;
             hpX2_ = hpX1_;
-            hpX1_ = acc;
+            hpX1_ = wet;
             hpY2_ = hpY1_;
             hpY1_ = hpOut;
             shaped = hpOut;
@@ -144,8 +174,13 @@ void CabIrModule::process(const float* inL, const float*, float* outL, float*, i
 
 void CabIrModule::reset()
 {
-    std::fill(buf_.begin(), buf_.end(), 0.0f);
-    bufPos_ = 0;
+    if (usePartitioned_) {
+        partitioned_.reset();
+        std::fill(blockWet_.begin(), blockWet_.end(), 0.0f);
+    } else {
+        std::fill(buf_.begin(), buf_.end(), 0.0f);
+        bufPos_ = 0;
+    }
     hpX1_ = 0.0f;
     hpX2_ = 0.0f;
     hpY1_ = 0.0f;
