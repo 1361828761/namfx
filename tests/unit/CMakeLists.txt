@@ -41,6 +41,7 @@ add_executable(namfx_tests
     midi_router_test.cpp
     export_import_test.cpp
     output_stage_test.cpp
+    tuner_test.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)
