@@ -16,6 +16,8 @@ void registerCabIr(ModuleRegistry& registry)
 {
     std::vector<ParamSpec> specs;
     specs.push_back(ParamSpec{"gain", "Gain", 0.0f, 1.0f, 0.5f, "", Taper::Linear});
+    specs.push_back(ParamSpec{"lowcut", "Low Cut", 0.0f, 1.0f, 0.0f, "", Taper::Linear});
+    specs.push_back(ParamSpec{"highcut", "High Cut", 0.0f, 1.0f, 1.0f, "", Taper::Linear});
     registry.registerModule("cab.ir", "cab", std::move(specs),
                             [] { return std::make_unique<CabIrModule>(); });
 }
@@ -53,6 +55,8 @@ void CabIrModule::prepare(double sampleRate, int)
 
     reset();
     gainSm_ = gain_;
+    lowcutSm_ = lowcut_;
+    highcutSm_ = highcut_;
     prepared_ = true;
 }
 
@@ -65,8 +69,11 @@ void CabIrModule::process(const float* inL, const float*, float* outL, float*, i
         return;
     }
     const int irLen = static_cast<int>(ir_.size());
+    constexpr float kTwoPi = 6.28318530717958647692f;
     for (int i = 0; i < n; ++i) {
         gainSm_ += smoothK_ * (gain_ - gainSm_);
+        lowcutSm_ += smoothK_ * (lowcut_ - lowcutSm_);
+        highcutSm_ += smoothK_ * (highcut_ - highcutSm_);
         // gain 0..1 -> -12..+12 dB (0.5 = 0 dB neutral)
         const float gainLin = std::pow(10.0f, (-12.0f + 24.0f * gainSm_) / 20.0f);
 
@@ -86,7 +93,52 @@ void CabIrModule::process(const float* inL, const float*, float* outL, float*, i
                 readPos += irLen;
             }
         }
-        outL[i] = acc * gainLin;
+
+        // tone shaping (2nd order Butterworth), fully bypassed at the
+        // default settings so the kernel passes exactly
+        float shaped = acc;
+        if (lowcutSm_ > 0.001f) {
+            const float hpFc = 20.0f * std::pow(10.0f, 2.0f * lowcutSm_);
+            const float hpW0 = kTwoPi * hpFc / fs_;
+            const float hpCos = std::cos(hpW0);
+            const float hpAlpha = std::sin(hpW0) / std::sqrt(2.0f);
+            const float hpA0 = 1.0f + hpAlpha;
+            const float hpb0 = (1.0f + hpCos) * 0.5f / hpA0;
+            const float hpb1 = -(1.0f + hpCos) / hpA0;
+            const float hpb2 = (1.0f + hpCos) * 0.5f / hpA0;
+            const float hpa1 = -2.0f * hpCos / hpA0;
+            const float hpa2 = (1.0f - hpAlpha) / hpA0;
+
+            const float hpOut = hpb0 * acc + hpb1 * hpX1_ + hpb2 * hpX2_ - hpa1 * hpY1_
+                - hpa2 * hpY2_;
+            hpX2_ = hpX1_;
+            hpX1_ = acc;
+            hpY2_ = hpY1_;
+            hpY1_ = hpOut;
+            shaped = hpOut;
+        }
+        if (highcutSm_ < 0.999f) {
+            const float lpFc = 4000.0f * std::pow(5.0f, highcutSm_);
+            const float lpW0 = kTwoPi * lpFc / fs_;
+            const float lpCos = std::cos(lpW0);
+            const float lpAlpha = std::sin(lpW0) / std::sqrt(2.0f);
+            const float lpA0 = 1.0f + lpAlpha;
+            const float lpb0 = (1.0f - lpCos) * 0.5f / lpA0;
+            const float lpb1 = (1.0f - lpCos) / lpA0;
+            const float lpb2 = lpb0;
+            const float lpa1 = -2.0f * lpCos / lpA0;
+            const float lpa2 = (1.0f - lpAlpha) / lpA0;
+
+            const float lpOut = lpb0 * shaped + lpb1 * lpX1_ + lpb2 * lpX2_ - lpa1 * lpY1_
+                - lpa2 * lpY2_;
+            lpX2_ = lpX1_;
+            lpX1_ = shaped;
+            lpY2_ = lpY1_;
+            lpY1_ = lpOut;
+            shaped = lpOut;
+        }
+
+        outL[i] = shaped * gainLin;
     }
 }
 
@@ -94,6 +146,14 @@ void CabIrModule::reset()
 {
     std::fill(buf_.begin(), buf_.end(), 0.0f);
     bufPos_ = 0;
+    hpX1_ = 0.0f;
+    hpX2_ = 0.0f;
+    hpY1_ = 0.0f;
+    hpY2_ = 0.0f;
+    lpX1_ = 0.0f;
+    lpX2_ = 0.0f;
+    lpY1_ = 0.0f;
+    lpY2_ = 0.0f;
 }
 
 void CabIrModule::setSampleRate(double sampleRate)
@@ -109,6 +169,10 @@ void CabIrModule::setParameter(const std::string& id, float value)
 {
     if (id == "gain") {
         gain_ = value;
+    } else if (id == "lowcut") {
+        lowcut_ = value;
+    } else if (id == "highcut") {
+        highcut_ = value;
     }
 }
 

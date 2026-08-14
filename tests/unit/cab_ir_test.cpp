@@ -72,15 +72,57 @@ double maxAbsError(const std::vector<float>& got, const std::vector<double>& wan
 
 } // namespace
 
-TEST_CASE("cab ir registers as cab category with gain param")
+TEST_CASE("cab ir registers as cab category with gain, lowcut, highcut params")
 {
     namfx::ModuleRegistry registry;
     namfx::registerCabIr(registry);
     REQUIRE(registry.has("cab.ir"));
     REQUIRE(registry.categoryOf("cab.ir") == "cab");
-    REQUIRE(registry.specsFor("cab.ir").size() == 1);
+    REQUIRE(registry.specsFor("cab.ir").size() == 3);
     REQUIRE(registry.findParam("cab.ir", "gain") != nullptr);
+    REQUIRE(registry.findParam("cab.ir", "lowcut") != nullptr);
+    REQUIRE(registry.findParam("cab.ir", "highcut") != nullptr);
     REQUIRE(makeModule(registry) != nullptr);
+}
+
+TEST_CASE("cab ir lowcut and highcut shape the tone")
+{
+    namfx::ModuleRegistry registry;
+    namfx::registerCabIr(registry);
+    const std::filesystem::path dir = tempDir();
+    const std::vector<float> ir = {1.0f}; // pure passthrough kernel
+    const std::filesystem::path file = writeIrWav(dir, "tone.wav", 48000, ir, false);
+
+    auto gainAt = [&](float lowcut, float highcut, float freq) {
+        auto mod = makeModule(registry);
+        REQUIRE(mod->loadAsset(file.string()));
+        mod->prepare(48000.0, 64);
+        mod->setParameter("gain", 0.5f);
+        mod->setParameter("lowcut", lowcut);
+        mod->setParameter("highcut", highcut);
+        std::vector<float> warm(4800, 0.0f);
+        std::vector<float> warmOut(4800, 0.0f);
+        float dummyR = 0.0f;
+        mod->process(warm.data(), &dummyR, warmOut.data(), &dummyR, static_cast<int>(warm.size()));
+        std::vector<float> in(12000, 0.0f);
+        std::vector<float> out(12000, 0.0f);
+        for (std::size_t i = 0; i < in.size(); ++i) {
+            in[i] = 0.4f
+                * static_cast<float>(std::sin(6.28318530717958647692 * freq * i / 48000.0));
+        }
+        mod->process(in.data(), &dummyR, out.data(), &dummyR, static_cast<int>(in.size()));
+        float peak = 0.0f;
+        for (std::size_t i = 6000; i < out.size(); ++i) {
+            peak = std::max(peak, std::fabs(out[i]));
+        }
+        return peak;
+    };
+
+    // lowcut 1 -> 200 Hz high-pass: 100 Hz strongly cut, 1 kHz untouched
+    REQUIRE(gainAt(1.0f, 1.0f, 100.0f) < gainAt(1.0f, 1.0f, 1000.0f) * 0.1f);
+    // highcut 0 -> 4 kHz low-pass: 8 kHz cut to ~21%, 1 kHz untouched
+    REQUIRE(gainAt(0.0f, 0.0f, 8000.0f) < gainAt(0.0f, 0.0f, 1000.0f) * 0.25f);
+    std::filesystem::remove_all(dir);
 }
 
 TEST_CASE("cab ir convolves within -100 dB of the double reference")

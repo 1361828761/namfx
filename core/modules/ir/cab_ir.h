@@ -42,8 +42,22 @@ private:
 
     float fs_ = 48000.0f;
     float gain_ = 0.5f;
+    float lowcut_ = 0.0f;
+    float highcut_ = 1.0f;
     float gainSm_ = 0.5f;
+    float lowcutSm_ = 0.0f;
+    float highcutSm_ = 1.0f;
     float smoothK_ = 0.0f;
+
+    // tone filter state (2nd order Butterworth, corners from params)
+    float hpX1_ = 0.0f;
+    float hpX2_ = 0.0f;
+    float hpY1_ = 0.0f;
+    float hpY2_ = 0.0f;
+    float lpX1_ = 0.0f;
+    float lpX2_ = 0.0f;
+    float lpY1_ = 0.0f;
+    float lpY2_ = 0.0f;
 
     static constexpr std::size_t kMaxIrSamples = 65536;
 };
