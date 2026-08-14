@@ -314,6 +314,32 @@ TEST_CASE("chain process is allocation free in the audio callback")
     REQUIRE_FALSE(guard.violated());
 }
 
+TEST_CASE("startFadeIn eases a fresh chain in from dry to avoid a pop on graph swap")
+{
+    auto registry = testx::makeRegistry();
+    // loud path: +12 dB would jump from -inf to +21.6 dB wet instantly
+    namfx::audio::Chain chain(gainSlot(0, 12.0f), registry);
+    chain.prepare(48000.0, 256);
+    chain.startFadeIn(); // what EngineHost does right before requestSwap
+
+    constexpr int n = 256;
+    const std::vector<float> in(static_cast<std::size_t>(n), 0.1f);
+    std::vector<float> outL(static_cast<std::size_t>(n));
+    std::vector<float> outR(static_cast<std::size_t>(n));
+    chain.process(in.data(), in.data(), outL.data(), outR.data(), n);
+
+    // first sample of the faded-in chain is dry (fade starts at 0)
+    REQUIRE(std::fabs(outL[0] - 0.1f) < 1e-4f);
+    // after the 1 ms fade (48 samples) the rest of the block is wet
+    REQUIRE(outL[n - 1] > 0.3f);
+
+    // a later prepare (device reconfiguration) must NOT restart the fade
+    chain.prepare(48000.0, 256);
+    std::vector<float> again(static_cast<std::size_t>(n));
+    chain.process(in.data(), in.data(), again.data(), outR.data(), n);
+    REQUIRE(again[0] > 0.3f);
+}
+
 TEST_CASE("reset restores a chain to its initial state")
 {
     auto registry = testx::makeRegistry();
@@ -334,4 +360,27 @@ TEST_CASE("reset restores a chain to its initial state")
     for (int i = 0; i < n; ++i) {
         REQUIRE(after[static_cast<std::size_t>(i)] == baseline[static_cast<std::size_t>(i)]);
     }
+}
+
+TEST_CASE("paramValue exposes the current (ramped) parameter of a slot")
+{
+    auto registry = testx::makeRegistry();
+    namfx::audio::Chain chain(gainSlot(0, 6.0f), registry);
+    chain.prepare(48000.0, 4096);
+
+    // initial value from the preset
+    REQUIRE(chain.paramValue(0, 0) == Catch::Approx(6.0f));
+    // after a scene-style write the store ramps; the readout follows the
+    // smoothed value, so give it time to settle
+    chain.setParamByIndex(0, 0, -3.0f);
+    constexpr int n = 4096;
+    std::vector<float> in(static_cast<std::size_t>(n), 0.1f);
+    std::vector<float> outL(static_cast<std::size_t>(n));
+    std::vector<float> outR(static_cast<std::size_t>(n));
+    chain.process(in.data(), in.data(), outL.data(), outR.data(), n);
+    REQUIRE(chain.paramValue(0, 0) == Catch::Approx(-3.0f).epsilon(1e-3f));
+
+    // unknown slot / param index throw
+    REQUIRE_THROWS_AS(chain.paramValue(9, 0), std::out_of_range);
+    REQUIRE_THROWS_AS(chain.paramValue(0, 99), std::out_of_range);
 }

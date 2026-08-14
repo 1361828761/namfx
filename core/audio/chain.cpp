@@ -124,6 +124,18 @@ void Chain::prepare(double sampleRate, int maxBlockSize)
     }
 }
 
+void Chain::startFadeIn()
+{
+    for (SlotRuntime& runtime : slots_) {
+        runtime.fade = 0.0f;
+        runtime.fadeTarget = 1.0f;
+        runtime.fadeRemaining = fadeSamples(runtime.def.impl);
+        runtime.fadeStep = runtime.fadeRemaining > 0
+                               ? 1.0f / static_cast<float>(runtime.fadeRemaining)
+                               : 0.0f;
+    }
+}
+
 void Chain::process(const float* inL, const float* inR, float* outL, float* outR, int n)
 {
     assert(n >= 0);
@@ -236,6 +248,16 @@ const std::vector<ParamSpec>& Chain::specsOf(int slotIndex) const
     for (const SlotRuntime& runtime : slots_) {
         if (runtime.def.slot == slotIndex) {
             return runtime.specs;
+        }
+    }
+    throw std::out_of_range("chain: no slot with index " + std::to_string(slotIndex));
+}
+
+float Chain::paramValue(int slotIndex, std::size_t paramIndex) const
+{
+    for (const SlotRuntime& runtime : slots_) {
+        if (runtime.def.slot == slotIndex) {
+            return runtime.store->getByIndex(paramIndex);
         }
     }
     throw std::out_of_range("chain: no slot with index " + std::to_string(slotIndex));

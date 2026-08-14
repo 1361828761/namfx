@@ -40,6 +40,14 @@ public:
     std::size_t paramIndexOf(int slotIndex, const std::string& paramId) const;
     const std::vector<ParamSpec>& specsOf(int slotIndex) const;
 
+    // control-thread readout for the UI (chain summary): current (ramped)
+    // value of a slot's parameter by index; throws std::out_of_range
+    float paramValue(int slotIndex, std::size_t paramIndex) const;
+
+    // graph-swap protocol: call on the incoming chain right before
+    // requestSwap so the swap eases in from dry instead of popping
+    void startFadeIn();
+
     // audio-thread scene application (block boundary): index-based, zero
     // allocation, no string work
     void setParamByIndex(int slotIndex, std::size_t paramIndex, float value);
