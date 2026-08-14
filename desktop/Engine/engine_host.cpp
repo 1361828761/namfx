@@ -1,6 +1,7 @@
 #include "desktop/Engine/engine_host.h"
 
 #include "audio/chain.h"
+#include "audio/chain_builder.h"
 #include "modules/dsp/chorus.h"
 #include "modules/dsp/dm2_delay.h"
 #include "modules/dsp/flanger.h"
@@ -53,6 +54,18 @@ std::string formatParam(const ParamSpec& spec, float value)
         s += spec.unit;
     }
     return s;
+}
+
+// module id -> slot impl: the engine distinguishes dsp / ir / nam modules
+std::string implForModule(const std::string& id)
+{
+    if (id == "cab.ir") {
+        return "ir";
+    }
+    if (id == "nam.amp") {
+        return "nam";
+    }
+    return "dsp";
 }
 
 } // namespace
@@ -229,6 +242,100 @@ std::string EngineHost::chainSummary() const
         s += '\n';
     }
     return s;
+}
+
+bool EngineHost::rebuildChain(std::vector<audio::SlotDef> slots, std::string& error)
+{
+    (void)error;
+    auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_);
+    chain->prepare(sampleRate_, blockSize_);
+    chain->startFadeIn(); // the swap eases in: no pop
+    chain_ = chain.get();
+    graph_.requestSwap(std::move(chain));
+    return true;
+}
+
+bool EngineHost::addModuleToChain(const std::string& moduleId, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    if (!registry_->has(moduleId)) {
+        error = "unknown module " + moduleId;
+        return false;
+    }
+    std::vector<audio::SlotDef> slots = audio::snapshotChain(*chain_);
+    audio::SlotDef def;
+    def.category = registry_->categoryOf(moduleId);
+    def.impl = implForModule(moduleId);
+    def.moduleId = moduleId;
+    for (const ParamSpec& spec : registry_->specsFor(moduleId)) {
+        def.params.push_back(ParamInit{spec.id, spec.defaultValue});
+    }
+    int nextSlot = 0;
+    for (const audio::SlotDef& s : slots) {
+        nextSlot = std::max(nextSlot, s.slot + 1);
+    }
+    def.slot = nextSlot;
+    slots.push_back(std::move(def));
+    return rebuildChain(std::move(slots), error);
+}
+
+bool EngineHost::removeModuleFromChain(int slot, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    std::vector<audio::SlotDef> slots = audio::snapshotChain(*chain_);
+    bool found = false;
+    for (auto it = slots.begin(); it != slots.end(); ++it) {
+        if (it->slot == slot) {
+            slots.erase(it);
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        error = "no slot " + std::to_string(slot);
+        return false;
+    }
+    return rebuildChain(std::move(slots), error);
+}
+
+std::vector<std::string> EngineHost::moduleIds() const
+{
+    return registry_->allIds();
+}
+
+std::vector<EngineHost::SlotInfo> EngineHost::chainInfo() const
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    std::vector<SlotInfo> out;
+    if (chain_ == nullptr) {
+        return out;
+    }
+    for (int i = 0; i < chain_->slotCount(); ++i) {
+        SlotInfo info;
+        try {
+            const audio::SlotDef def = chain_->defOf(i);
+            info.slot = def.slot;
+            info.moduleId = def.moduleId;
+            info.bypass = def.bypass;
+            info.mix = def.mix;
+            info.specs = chain_->specsOf(i);
+            for (std::size_t p = 0; p < info.specs.size(); ++p) {
+                info.values.push_back(chain_->paramValue(i, p));
+            }
+        } catch (const std::out_of_range&) {
+            continue;
+        }
+        out.push_back(std::move(info));
+    }
+    return out;
 }
 
 void EngineHost::handleMidi(const midi::Event& event)

@@ -263,6 +263,16 @@ float Chain::paramValue(int slotIndex, std::size_t paramIndex) const
     throw std::out_of_range("chain: no slot with index " + std::to_string(slotIndex));
 }
 
+SlotDef Chain::defOf(int slotIndex) const
+{
+    for (const SlotRuntime& runtime : slots_) {
+        if (runtime.def.slot == slotIndex) {
+            return runtime.def;
+        }
+    }
+    throw std::out_of_range("chain: no slot with index " + std::to_string(slotIndex));
+}
+
 void Chain::setParamByIndex(int slotIndex, std::size_t paramIndex, float value)
 {
     for (SlotRuntime& runtime : slots_) {

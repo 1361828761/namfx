@@ -1,4 +1,5 @@
 #include "audio/chain.h"
+#include "audio/chain_builder.h"
 #include "audio/slot.h"
 #include "platform/rt_alloc.h"
 #include "test_registry.h"
@@ -338,6 +339,65 @@ TEST_CASE("startFadeIn eases a fresh chain in from dry to avoid a pop on graph s
     std::vector<float> again(static_cast<std::size_t>(n));
     chain.process(in.data(), in.data(), again.data(), outR.data(), n);
     REQUIRE(again[0] > 0.3f);
+}
+
+TEST_CASE("snapshotChain captures modules, current values, bypass and mix")
+{
+    auto registry = testx::makeRegistry();
+    std::vector<namfx::audio::SlotDef> slots;
+    namfx::audio::SlotDef def;
+    def.slot = 0;
+    def.category = "pedal";
+    def.impl = "dsp";
+    def.moduleId = "gain";
+    def.params.push_back(namfx::ParamInit{"gain", 6.0f});
+    def.bypass = true;
+    def.mix = 0.8f;
+    slots.push_back(def);
+    namfx::audio::SlotDef def2;
+    def2.slot = 1;
+    def2.category = "pedal";
+    def2.impl = "dsp";
+    def2.moduleId = "tone";
+    def2.params.push_back(namfx::ParamInit{"freq", 300.0f});
+    def2.params.push_back(namfx::ParamInit{"mode", 1.0f});
+    slots.push_back(def2);
+
+    namfx::audio::Chain chain(std::move(slots), registry);
+    chain.prepare(48000.0, 4096);
+    // dial in a value that differs from the preset
+    chain.setParamByIndex(1, 0, 500.0f);
+    constexpr int n = 4096;
+    std::vector<float> in(static_cast<std::size_t>(n), 0.1f);
+    std::vector<float> outL(static_cast<std::size_t>(n));
+    std::vector<float> outR(static_cast<std::size_t>(n));
+    chain.process(in.data(), in.data(), outL.data(), outR.data(), n);
+
+    const std::vector<namfx::audio::SlotDef> snap = namfx::audio::snapshotChain(chain);
+    REQUIRE(snap.size() == 2);
+    REQUIRE(snap[0].moduleId == "gain");
+    REQUIRE(snap[0].bypass == true);
+    REQUIRE(snap[0].mix == Catch::Approx(0.8f));
+    REQUIRE(snap[0].params.size() == 1);
+    REQUIRE(snap[0].params[0].id == "gain");
+    REQUIRE(snap[0].params[0].value == Catch::Approx(6.0f));
+    REQUIRE(snap[1].moduleId == "tone");
+    REQUIRE(snap[1].params.size() == 2);
+    // the ramped value (500 Hz), not the preset default (300)
+    REQUIRE(snap[1].params[0].value == Catch::Approx(500.0f).epsilon(1e-3f));
+
+    // a chain rebuilt from the snapshot behaves identically (module order,
+    // bypass, values preserved); compare the tail after filter transients
+    // settle
+    namfx::audio::Chain rebuilt(snap, registry);
+    rebuilt.prepare(48000.0, 4096);
+    std::vector<float> rbL(static_cast<std::size_t>(n));
+    std::vector<float> rbR(static_cast<std::size_t>(n));
+    rebuilt.process(in.data(), in.data(), rbL.data(), rbR.data(), n);
+    for (int i = n - 480; i < n; ++i) {
+        REQUIRE(rbL[static_cast<std::size_t>(i)]
+                == Catch::Approx(outL[static_cast<std::size_t>(i)]).epsilon(1e-3f));
+    }
 }
 
 TEST_CASE("reset restores a chain to its initial state")

@@ -2,6 +2,7 @@ add_library(namfx_core STATIC
     platform/rt_alloc.cpp
     audio/audio_graph.cpp
     audio/chain.cpp
+    audio/chain_builder.cpp
     audio/param_store.cpp
     audio/scene_engine.cpp
     audio/control_router.cpp

@@ -58,6 +58,24 @@ public:
     // the UI chain view; reads inside the chain mutex
     std::string chainSummary() const;
 
+    // chain editing (M5c): add a module at the end / remove one by slot;
+    // the edit snapshots the live chain (current parameter values), rebuilds
+    // a fresh chain and swaps it in (fade-in, no pop)
+    bool addModuleToChain(const std::string& moduleId, std::string& error);
+    bool removeModuleFromChain(int slot, std::string& error);
+    std::vector<std::string> moduleIds() const;
+
+    // structured chain readout for the edit panel
+    struct SlotInfo {
+        int slot = 0;
+        std::string moduleId;
+        bool bypass = false;
+        float mix = 1.0f;
+        std::vector<ParamSpec> specs;
+        std::vector<float> values;
+    };
+    std::vector<SlotInfo> chainInfo() const;
+
     // MIDI input (control thread)
     void handleMidi(const midi::Event& event);
 
@@ -68,6 +86,9 @@ public:
     audio::SceneEngine& scenes() { return scenes_; }
 
 private:
+    // rebuild the graph from a slot list (control thread, chain mutex held)
+    bool rebuildChain(std::vector<audio::SlotDef> slots, std::string& error);
+
     // guards chain_ against device reconfiguration (prepare() re-prepares
     // the live chain) racing preset loads; never taken inside the audio
     // callback (process() does not touch chain_)

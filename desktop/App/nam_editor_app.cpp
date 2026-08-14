@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <algorithm>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -198,10 +199,13 @@ void NAMEditorApplication::timerCallback()
                             juce::dontSendNotification);
     }
     // after a device switch the output stays muted until the new device has
-    // warmed up (filter states settle), then fades back in
+    // warmed up (filter states settle), then fades back in; a manual Mute
+    // keeps the output muted
     if (pendingUnmute_ != 0 && juce::Time::getMillisecondCounter() >= pendingUnmute_) {
         pendingUnmute_ = 0;
-        host_.output().setMute(false);
+        if (muteToggle_ == nullptr || !muteToggle_->getToggleState()) {
+            host_.output().setMute(false);
+        }
     }
     if (tunerOn_) {
         updateTunerReadout();
@@ -291,10 +295,79 @@ void NAMEditorApplication::loadSelectedPreset()
                                      demoDir_.getFullPathName().toStdString(), error);
     if (ok) {
         statusLabel_->setText("loaded " + file.getFileName(), juce::dontSendNotification);
-        chainLabel_->setText(juce::String(host_.chainSummary()), juce::dontSendNotification);
+        refreshChainViews();
     } else {
         statusLabel_->setText("load failed: " + juce::String(error), juce::dontSendNotification);
     }
+}
+
+void NAMEditorApplication::rebuildChainPanel()
+{
+    chainPanelContent_->removeAllChildren();
+    const std::vector<EngineHost::SlotInfo> infos = host_.chainInfo();
+    int y = 4;
+    for (const EngineHost::SlotInfo& info : infos) {
+        auto* name = new juce::Label();
+        name->setText(juce::String(info.slot) + "  " + info.moduleId, juce::dontSendNotification);
+        name->setBounds(8, y, 160, 20);
+        chainPanelContent_->addAndMakeVisible(name);
+
+        auto* bp = new juce::ToggleButton("Byp");
+        bp->setToggleState(info.bypass, juce::dontSendNotification);
+        bp->setBounds(176, y, 44, 20);
+        chainPanelContent_->addAndMakeVisible(bp);
+        bp->onClick = [this, slot = info.slot, bp] {
+            host_.uiSetBypass(slot, bp->getToggleState());
+        };
+
+        int py = y + 22;
+        for (std::size_t p = 0; p < info.specs.size(); ++p) {
+            auto* pl = new juce::Label();
+            pl->setText(info.specs[p].displayName.empty() ? info.specs[p].id
+                                                          : info.specs[p].displayName,
+                        juce::dontSendNotification);
+            pl->setBounds(8, py, 110, 18);
+            chainPanelContent_->addAndMakeVisible(pl);
+
+            auto* sl = new juce::Slider(juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
+            sl->setRange(info.specs[p].min, info.specs[p].max, 0.001);
+            sl->setValue(info.values[p], juce::dontSendNotification);
+            sl->setBounds(122, py, 240, 18);
+            chainPanelContent_->addAndMakeVisible(sl);
+
+            auto* vl = new juce::Label();
+            vl->setText(juce::String(info.values[p], 2), juce::dontSendNotification);
+            vl->setBounds(368, py, 90, 18);
+            chainPanelContent_->addAndMakeVisible(vl);
+
+            const int slot = info.slot;
+            const std::string paramId = info.specs[p].id;
+            sl->onValueChange = [this, sl, vl, slot, paramId] {
+                host_.uiSetParam(slot, paramId, static_cast<float>(sl->getValue()));
+                vl->setText(juce::String(sl->getValue(), 2), juce::dontSendNotification);
+            };
+            py += 22;
+        }
+
+        auto* del = new juce::TextButton("Del");
+        del->setBounds(466, y, 40, 20);
+        chainPanelContent_->addAndMakeVisible(del);
+        del->onClick = [this, slot = info.slot] {
+            std::string error;
+            host_.removeModuleFromChain(slot, error);
+            refreshChainViews();
+        };
+
+        y = py + 6;
+    }
+    chainPanelContent_->setSize(1220, std::max(y, 200));
+    chainPanelViewport_->setViewedComponent(chainPanelContent_.get(), false);
+}
+
+void NAMEditorApplication::refreshChainViews()
+{
+    rebuildChainPanel();
+    chainLabel_->setText(juce::String(host_.chainSummary()), juce::dontSendNotification);
 }
 
 void NAMEditorApplication::refreshAudioDeviceControls()
@@ -505,13 +578,102 @@ void NAMEditorApplication::buildUi()
     sceneLabel_->setBounds(120, 150, 400, 20);
     addAndMakeVisible(*sceneLabel_);
 
-    // chain view: what is actually loaded (module per slot + parameter
-    // values), read from the engine after a load
+    // add-module row
+    addModuleBox_ = std::make_unique<juce::ComboBox>();
+    addModuleBox_->setBounds(16, 176, 220, 26);
+    addAndMakeVisible(*addModuleBox_);
+    const std::vector<std::string> ids = host_.moduleIds();
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        addModuleBox_->addItem(ids[i], static_cast<int>(i + 1));
+    }
+    addModuleBox_->setSelectedId(1, juce::dontSendNotification);
+
+    addModuleButton_ = std::make_unique<juce::TextButton>("Add");
+    addModuleButton_->setBounds(244, 176, 56, 26);
+    addAndMakeVisible(*addModuleButton_);
+    addModuleButton_->onClick = [this] {
+        const int idx = addModuleBox_->getSelectedId();
+        const std::vector<std::string> ids2 = host_.moduleIds();
+        if (idx <= 0 || idx > static_cast<int>(ids2.size())) {
+            return;
+        }
+        std::string error;
+        if (host_.addModuleToChain(ids2[static_cast<std::size_t>(idx - 1)], error)) {
+            refreshChainViews();
+        } else {
+            statusLabel_->setText("add failed: " + juce::String(error),
+                                  juce::dontSendNotification);
+        }
+    };
+
+    // chain edit panel: one block per slot (name, bypass, per-parameter
+    // sliders, delete), scrollable
+    chainPanelViewport_ = std::make_unique<juce::Viewport>();
+    chainPanelViewport_->setBounds(16, 208, 1240, 250);
+    addAndMakeVisible(*chainPanelViewport_);
+    chainPanelContent_ = std::make_unique<juce::Component>();
+    chainPanelViewport_->setViewedComponent(chainPanelContent_.get(), false);
+
+    // output panel: master / input gain / 3-band EQ / mute
+    auto makeSlider = [this](std::unique_ptr<juce::Slider>& s, int x, double min, double max,
+                             double value) {
+        s = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal,
+                                           juce::Slider::NoTextBox);
+        s->setRange(min, max, 0.1);
+        s->setValue(value, juce::dontSendNotification);
+        s->setBounds(x, 464, 130, 18);
+        addAndMakeVisible(*s);
+    };
+    auto makeOutLabel = [this](const juce::String& text, int x) {
+        auto* l = new juce::Label();
+        l->setText(text, juce::dontSendNotification);
+        l->setBounds(x, 462, 60, 20);
+        addAndMakeVisible(l);
+    };
+
+    makeOutLabel("Master", 8);
+    makeSlider(masterSlider_, 70, -60.0, 0.0, 0.0);
+    masterSlider_->onValueChange = [this] {
+        host_.output().setMasterVolume(static_cast<float>(masterSlider_->getValue()));
+    };
+
+    makeOutLabel("InGain", 210);
+    makeSlider(inputGainSlider_, 272, -60.0, 24.0, 0.0);
+    inputGainSlider_->onValueChange = [this] {
+        host_.output().setInputGain(static_cast<float>(inputGainSlider_->getValue()));
+    };
+
+    makeOutLabel("Bass", 412);
+    makeSlider(bassSlider_, 460, 0.0, 1.0, 0.5);
+    bassSlider_->onValueChange = [this] {
+        host_.output().setBass(static_cast<float>(bassSlider_->getValue()));
+    };
+
+    makeOutLabel("Mid", 600);
+    makeSlider(midSlider_, 648, 0.0, 1.0, 0.5);
+    midSlider_->onValueChange = [this] {
+        host_.output().setMiddle(static_cast<float>(midSlider_->getValue()));
+    };
+
+    makeOutLabel("Treble", 788);
+    makeSlider(trebleSlider_, 836, 0.0, 1.0, 0.5);
+    trebleSlider_->onValueChange = [this] {
+        host_.output().setTreble(static_cast<float>(trebleSlider_->getValue()));
+    };
+
+    muteToggle_ = std::make_unique<juce::ToggleButton>("Mute");
+    muteToggle_->setBounds(976, 460, 60, 22);
+    addAndMakeVisible(*muteToggle_);
+    muteToggle_->onClick = [this] {
+        host_.output().setMute(muteToggle_->getToggleState());
+    };
+
+    // chain view: read-only summary of what is actually loaded
     chainLabel_ = std::make_unique<juce::TextEditor>();
     chainLabel_->setMultiLine(true);
     chainLabel_->setReadOnly(true);
     chainLabel_->setScrollbarsShown(true);
-    chainLabel_->setBounds(16, 176, 1240, 520);
+    chainLabel_->setBounds(16, 496, 1240, 200);
     addAndMakeVisible(*chainLabel_);
     chainLabel_->setText("(no preset loaded)", juce::dontSendNotification);
 }

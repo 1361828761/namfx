@@ -44,6 +44,10 @@ public:
     // value of a slot's parameter by index; throws std::out_of_range
     float paramValue(int slotIndex, std::size_t paramIndex) const;
 
+    // control-thread copy of a slot's definition (module id, bypass, mix);
+    // throws std::out_of_range
+    SlotDef defOf(int slotIndex) const;
+
     // graph-swap protocol: call on the incoming chain right before
     // requestSwap so the swap eases in from dry instead of popping
     void startFadeIn();

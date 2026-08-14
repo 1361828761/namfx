@@ -54,6 +54,8 @@ private:
     void refreshAudioDeviceControls();
     void applyAudioSetup();
     void updateTunerReadout();
+    void rebuildChainPanel();
+    void refreshChainViews();
 
     // tunings, indexed 1st string (high E) .. 6th string (low E):
     // 0 = EADGBE (E4 B3 G3 D3 A2 E2), 1 = Drop D (E4 B3 G3 D3 A2 D2)
@@ -74,6 +76,18 @@ private:
     std::unique_ptr<juce::TextButton> loadButton_;
     std::unique_ptr<juce::Label> statusLabel_;
     std::unique_ptr<juce::Label> xrunLabel_; // under/overrun counter
+    // chain editing (M5c)
+    std::unique_ptr<juce::ComboBox> addModuleBox_;
+    std::unique_ptr<juce::TextButton> addModuleButton_;
+    std::unique_ptr<juce::Viewport> chainPanelViewport_;
+    std::unique_ptr<juce::Component> chainPanelContent_;
+    // output panel
+    std::unique_ptr<juce::Slider> masterSlider_;
+    std::unique_ptr<juce::Slider> inputGainSlider_;
+    std::unique_ptr<juce::Slider> bassSlider_;
+    std::unique_ptr<juce::Slider> midSlider_;
+    std::unique_ptr<juce::Slider> trebleSlider_;
+    std::unique_ptr<juce::ToggleButton> muteToggle_;
     std::unique_ptr<juce::TextEditor> chainLabel_;
     // audio device panel
     std::unique_ptr<juce::ComboBox> deviceTypeBox_;
