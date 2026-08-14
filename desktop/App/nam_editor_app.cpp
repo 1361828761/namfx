@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 
 #include <algorithm>
+#include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -270,6 +271,12 @@ void NAMEditorApplication::initialise(const juce::String&)
     const juce::String err =
         deviceManager_.initialise(2, 2, nullptr, true, {}, &preferred);
     deviceManager_.addAudioCallback(&player_);
+    // MIDI input: enable every available input device (pedal / interface)
+    midiCallback_ = std::make_unique<MidiInputCallback>(*this);
+    for (const juce::MidiDeviceInfo& dev : juce::MidiInput::getAvailableDevices()) {
+        deviceManager_.setMidiInputDeviceEnabled(dev.identifier, true);
+        deviceManager_.addMidiInputDeviceCallback(dev.identifier, midiCallback_.get());
+    }
     buildUi();
     mainWindow_ = std::make_unique<MainWindow>(*this);
     refreshAudioDeviceControls();
@@ -341,6 +348,18 @@ void NAMEditorApplication::timerCallback()
         sceneLabel_->setText("Scene: " + juce::String(host_.activeScene() + 1) + "/"
                                  + juce::String(host_.sceneCount()),
                              juce::dontSendNotification);
+    }
+    // level readouts (10 Hz)
+    if (aliveTicks_ % 10 == 0) {
+        auto dbText = [](float level) {
+            if (level < 1e-5f) {
+                return juce::String("-inf dB");
+            }
+            return juce::String(20.0 * std::log10(level), 1) + " dB";
+        };
+        levelInLabel_->setText("in " + dbText(host_.inputLevel()), juce::dontSendNotification);
+        levelOutLabel_->setText("out " + dbText(host_.outputLevel()),
+                                juce::dontSendNotification);
     }
 }
 
@@ -434,6 +453,8 @@ void NAMEditorApplication::loadPresetFile(const juce::File& file)
     if (ok) {
         statusLabel_->setText("loaded " + file.getFileName(), juce::dontSendNotification);
         refreshChainViews();
+        rebuildSceneBar();
+        selectedScene_ = -1;
     } else {
         statusLabel_->setText("load failed: " + juce::String(error), juce::dontSendNotification);
     }
@@ -451,6 +472,7 @@ void NAMEditorApplication::loadSelectedPreset()
 void NAMEditorApplication::refreshModelLibrary()
 {
     modelFiles_.clear();
+    irFiles_.clear();
     std::vector<juce::File> dirs;
     dirs.push_back(juce::File(NAMFX_NAM_DIR));
     dirs.push_back(demoDir_.getChildFile("models"));
@@ -467,6 +489,29 @@ void NAMEditorApplication::refreshModelLibrary()
             modelFiles_.push_back(f);
         }
     }
+    // IR library: demo IRs + user IR folder + exe-adjacent folder
+    std::vector<juce::File> irDirs;
+    irDirs.push_back(demoDir_.getChildFile("irs"));
+    irDirs.push_back(juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                         .getChildFile("namfx")
+                         .getChildFile("irs"));
+    irDirs.push_back(juce::File::getSpecialLocation(juce::File::currentApplicationFile)
+                         .getParentDirectory()
+                         .getChildFile("irs"));
+    for (const juce::File& d : irDirs) {
+        if (!d.isDirectory()) {
+            continue;
+        }
+        juce::Array<juce::File> found;
+        d.findChildFiles(found, juce::File::findFiles, false, "*.wav");
+        for (const juce::File& f : found) {
+            irFiles_.push_back(f);
+        }
+    }
+    std::sort(irFiles_.begin(), irFiles_.end(),
+              [](const juce::File& a, const juce::File& b) {
+                  return a.getFileName().compareNatural(b.getFileName()) < 0;
+              });
     // stable, human-friendly order: type -> brand -> name
     std::sort(modelFiles_.begin(), modelFiles_.end(),
               [](const juce::File& a, const juce::File& b) {
@@ -554,9 +599,19 @@ void NAMEditorApplication::refreshAssetList()
 {
     addAssetBox_->clear(juce::dontSendNotification);
     const juce::String sel = addModuleBox_->getText();
-    const bool needsAsset = sel.startsWith("amp.");
+    const bool needsAsset = sel.startsWith("amp.") || sel.startsWith("cab.");
     addAssetBox_->setVisible(needsAsset);
     if (!needsAsset) {
+        return;
+    }
+    if (sel.startsWith("cab.")) {
+        // IR library (flat list)
+        for (std::size_t i = 0; i < irFiles_.size(); ++i) {
+            addAssetBox_->addItem(irFiles_[i].getFileName(), static_cast<int>(i + 1));
+        }
+        if (addAssetBox_->getNumItems() > 0) {
+            addAssetBox_->setSelectedId(1, juce::dontSendNotification);
+        }
         return;
     }
     // grouped by type + brand with section headings
@@ -701,6 +756,132 @@ void NAMEditorApplication::reorderChainByDrag(int srcSlot, int dstIndex)
     }
 }
 
+void MidiInputCallback::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& msg)
+{
+    namfx::midi::Event e;
+    e.channel = static_cast<std::uint8_t>(msg.getChannel() - 1);
+    if (msg.isNoteOn()) {
+        e.type = namfx::midi::Event::Type::NoteOn;
+        e.data1 = static_cast<std::uint8_t>(msg.getNoteNumber());
+        e.data2 = static_cast<std::uint8_t>(msg.getVelocity());
+    } else if (msg.isNoteOff()) {
+        e.type = namfx::midi::Event::Type::NoteOff;
+        e.data1 = static_cast<std::uint8_t>(msg.getNoteNumber());
+    } else if (msg.isController()) {
+        e.type = namfx::midi::Event::Type::ControlChange;
+        e.data1 = static_cast<std::uint8_t>(msg.getControllerNumber());
+        e.data2 = static_cast<std::uint8_t>(msg.getControllerValue());
+    } else if (msg.isProgramChange()) {
+        e.type = namfx::midi::Event::Type::ProgramChange;
+        e.data1 = static_cast<std::uint8_t>(msg.getProgramChangeNumber());
+    } else if (msg.isPitchWheel()) {
+        e.type = namfx::midi::Event::Type::PitchBend;
+        e.data1 = static_cast<std::uint8_t>(msg.getPitchWheelValue() & 0x7F);
+        e.data2 = static_cast<std::uint8_t>((msg.getPitchWheelValue() >> 7) & 0x7F);
+    } else {
+        return;
+    }
+    // dispatch on the UI thread: the engine API is control-thread
+    juce::MessageManager::callAsync([this, e] { app_.onMidiEvent(e); });
+}
+
+void NAMEditorApplication::onMidiEvent(const midi::Event& event)
+{
+    host_.handleMidi(event);
+    // learn mode: capture the next CC
+    if (event.type != midi::Event::Type::ControlChange) {
+        return;
+    }
+    const int cc = event.data1;
+    if (learningParam_ != nullptr) {
+        std::string error;
+        if (host_.midiLearnParam(cc, learningParam_->moduleId, learningParam_->paramId,
+                                 error)) {
+            midiBinds_.push_back(
+                MidiBind{cc, juce::String(learningParam_->moduleId) + "." + juce::String(
+                                                                              learningParam_->paramId)});
+            midiBindLabel_->setText(bindingSummary(), juce::dontSendNotification);
+            statusLabel_->setText(juce::String("learned: CC ") + juce::String(cc) + " -> "
+                                      + learningParam_->moduleId + "."
+                                      + learningParam_->paramId,
+                                  juce::dontSendNotification);
+        } else {
+            statusLabel_->setText("learn failed: " + juce::String(error),
+                                  juce::dontSendNotification);
+        }
+        learningParam_ = nullptr;
+        return;
+    }
+    if (learningScene_ > 0) {
+        std::string error;
+        if (host_.midiLearnScene(cc, learningScene_, error)) {
+            midiBinds_.push_back(
+                MidiBind{cc, juce::String("Scene ") + juce::String(learningScene_)});
+            midiBindLabel_->setText(bindingSummary(), juce::dontSendNotification);
+            statusLabel_->setText(juce::String("learned: CC ") + juce::String(cc) + " -> Scene "
+                                      + juce::String(learningScene_),
+                                  juce::dontSendNotification);
+        } else {
+            statusLabel_->setText("learn failed: " + juce::String(error),
+                                  juce::dontSendNotification);
+        }
+        learningScene_ = 0;
+    }
+}
+
+void NAMEditorApplication::beginLearnParam(const std::string& moduleId,
+                                           const std::string& paramId)
+{
+    learningParam_ = std::make_unique<LearnTarget>(LearnTarget{moduleId, paramId});
+    statusLabel_->setText("learning: move a pedal CC for " + juce::String(moduleId) + "."
+                              + juce::String(paramId),
+                          juce::dontSendNotification);
+}
+
+void NAMEditorApplication::clearMidiBinds()
+{
+    for (const MidiBind& b : midiBinds_) {
+        host_.midiClearBind(b.cc);
+    }
+    midiBinds_.clear();
+    midiBindLabel_->setText("no MIDI binds", juce::dontSendNotification);
+}
+
+juce::String NAMEditorApplication::bindingSummary() const
+{
+    if (midiBinds_.empty()) {
+        return "no MIDI binds";
+    }
+    juce::String s;
+    for (const MidiBind& b : midiBinds_) {
+        s += "CC " + juce::String(b.cc) + "->" + b.target + "  ";
+    }
+    return s;
+}
+
+void NAMEditorApplication::rebuildSceneBar()
+{
+    sceneBar_->removeAllChildren();
+    const int n = host_.sceneCount();
+    const int active = host_.activeScene();
+    for (int i = 0; i < n; ++i) {
+        juce::String nm = host_.sceneName(i);
+        if (nm.isEmpty()) {
+            nm = "Scene " + juce::String(i + 1);
+        }
+        auto* b = new juce::ToggleButton(nm);
+        b->setToggleState(i == active, juce::dontSendNotification);
+        b->setBounds(i * 120, 2, 114, 22);
+        sceneBar_->addAndMakeVisible(b);
+        b->onClick = [this, i] {
+            selectedScene_ = i;
+            host_.recallScene(i);
+            rebuildSceneBar(); // highlight the active scene
+        };
+    }
+    sceneBar_->setSize(std::max(n * 120, 120), 26);
+}
+
 void NAMEditorApplication::rebuildChainPanel()
 {
     chainPanelContent_->removeAllChildren();
@@ -762,6 +943,15 @@ void NAMEditorApplication::rebuildChainPanel()
             vl->setText(juce::String(info.values[p], 2), juce::dontSendNotification);
             vl->setBounds(368, py, 90, 18);
             chainPanelContent_->addAndMakeVisible(vl);
+
+            auto* lrn = new juce::TextButton("Lrn");
+            lrn->setBounds(466, py - 1, 36, 18);
+            chainPanelContent_->addAndMakeVisible(lrn);
+            const std::string lrnModuleId = info.moduleId;
+            const std::string lrnParamId = info.specs[p].id;
+            lrn->onClick = [this, lrnModuleId, lrnParamId] {
+                beginLearnParam(lrnModuleId, lrnParamId);
+            };
 
             const int slot = info.slot;
             const std::string paramId = info.specs[p].id;
@@ -898,7 +1088,7 @@ void NAMEditorApplication::applyAudioSetup()
 
 void NAMEditorApplication::buildUi()
 {
-    setSize(1280, 720);
+    setSize(1280, 880);
 
     addSectionLabel("PRESET", 8);
     presetBox_ = std::make_unique<juce::ComboBox>();
@@ -911,14 +1101,34 @@ void NAMEditorApplication::buildUi()
     addAndMakeVisible(*loadButton_);
     loadButton_->onClick = [this] { loadSelectedPreset(); };
 
+    // delete the selected USER preset (demo presets are protected)
+    delPresetButton_ = std::make_unique<juce::TextButton>("Del");
+    delPresetButton_->setBounds(460, 26, 40, 28);
+    addAndMakeVisible(*delPresetButton_);
+    delPresetButton_->onClick = [this] {
+        const int idx = presetBox_->getSelectedId();
+        if (idx <= 0 || idx > static_cast<int>(presetFiles_.size())) {
+            return;
+        }
+        const juce::File f = presetFiles_[static_cast<std::size_t>(idx - 1)];
+        if (f.getParentDirectory() != userPresetDir_) {
+            statusLabel_->setText("demo presets cannot be deleted",
+                                  juce::dontSendNotification);
+            return;
+        }
+        f.deleteFile();
+        rebuildPresetList();
+        statusLabel_->setText("deleted " + f.getFileName(), juce::dontSendNotification);
+    };
+
     // save the current chain as a user preset (up to 100)
     presetNameBox_ = std::make_unique<juce::TextEditor>();
     presetNameBox_->setText("my_tone", false);
-    presetNameBox_->setBounds(464, 26, 160, 28);
+    presetNameBox_->setBounds(508, 26, 160, 28);
     addAndMakeVisible(*presetNameBox_);
 
     savePresetButton_ = std::make_unique<juce::TextButton>("Save");
-    savePresetButton_->setBounds(630, 26, 56, 28);
+    savePresetButton_->setBounds(674, 26, 56, 28);
     addAndMakeVisible(*savePresetButton_);
     savePresetButton_->onClick = [this] { saveUserPreset(); };
 
@@ -1049,8 +1259,16 @@ void NAMEditorApplication::buildUi()
             asset = modelFiles_[static_cast<std::size_t>(aidx - 1)].getFullPathName()
                         .toStdString();
         } else if (juce::String(moduleId).startsWith("cab.")) {
-            // cabinet modules use the bundled demo IR by default
-            asset = demoDir_.getChildFile("irs/cab_clean.wav").getFullPathName().toStdString();
+            // cabinet modules use the selected IR (default: first in library)
+            const int aidx = addAssetBox_->getSelectedId();
+            if (aidx > 0 && aidx <= static_cast<int>(irFiles_.size())) {
+                asset = irFiles_[static_cast<std::size_t>(aidx - 1)].getFullPathName()
+                            .toStdString();
+            } else if (!irFiles_.empty()) {
+                asset = irFiles_[0].getFullPathName().toStdString();
+            } else {
+                asset = demoDir_.getChildFile("irs/cab_clean.wav").getFullPathName().toStdString();
+            }
         }
         std::string error;
         if (host_.addModuleToChain(moduleId, asset, error)) {
@@ -1069,7 +1287,59 @@ void NAMEditorApplication::buildUi()
     chainPanelContent_ = std::make_unique<ChainPanelContent>();
     chainPanelViewport_->setViewedComponent(chainPanelContent_.get(), false);
 
-    addSectionLabel("OUTPUT", 510);
+    addSectionLabel("SCENE", 510);
+    sceneBar_ = std::make_unique<juce::Component>();
+    sceneBar_->setBounds(16, 528, 900, 26);
+    addAndMakeVisible(*sceneBar_);
+
+    sceneNameBox_ = std::make_unique<juce::TextEditor>();
+    sceneNameBox_->setText("my_scene", false);
+    sceneNameBox_->setBounds(924, 528, 150, 26);
+    addAndMakeVisible(*sceneNameBox_);
+
+    sceneSaveButton_ = std::make_unique<juce::TextButton>("Save");
+    sceneSaveButton_->setBounds(1080, 528, 56, 26);
+    addAndMakeVisible(*sceneSaveButton_);
+    sceneSaveButton_->onClick = [this] {
+        std::string error;
+        const int idx = (selectedScene_ >= 0) ? selectedScene_ : host_.sceneCount();
+        if (host_.saveScene(idx, sceneNameBox_->getText().trim().toStdString(), error)) {
+            statusLabel_->setText("scene saved", juce::dontSendNotification);
+            rebuildSceneBar();
+            refreshChainViews();
+        } else {
+            statusLabel_->setText("scene save failed: " + juce::String(error),
+                                  juce::dontSendNotification);
+        }
+    };
+
+    // MIDI: bind display + clear + scene learn (param learn is per row)
+    sceneLearnButton_ = std::make_unique<juce::TextButton>("Lrn CC");
+    sceneLearnButton_->setBounds(1142, 528, 64, 26);
+    addAndMakeVisible(*sceneLearnButton_);
+    sceneLearnButton_->onClick = [this] {
+        if (selectedScene_ < 0) {
+            statusLabel_->setText("select a scene first", juce::dontSendNotification);
+            return;
+        }
+        learningScene_ = selectedScene_ + 1;
+        statusLabel_->setText(juce::String("learning: move a CC for Scene ")
+                                  + juce::String(learningScene_),
+                              juce::dontSendNotification);
+    };
+
+    midiBindLabel_ = std::make_unique<juce::Label>();
+    midiBindLabel_->setBounds(16, 556, 1000, 18);
+    midiBindLabel_->setColour(juce::Label::textColourId, NAMTheme::textDim());
+    addAndMakeVisible(*midiBindLabel_);
+    midiBindLabel_->setText("no MIDI binds", juce::dontSendNotification);
+
+    midiClearButton_ = std::make_unique<juce::TextButton>("Clear");
+    midiClearButton_->setBounds(1024, 554, 56, 22);
+    addAndMakeVisible(*midiClearButton_);
+    midiClearButton_->onClick = [this] { clearMidiBinds(); };
+
+    addSectionLabel("OUTPUT", 590);
     // output panel: master / input gain / 3-band EQ / mute
     auto makeSlider = [this](std::unique_ptr<juce::Slider>& s, int x, double min, double max,
                              double value) {
@@ -1077,13 +1347,13 @@ void NAMEditorApplication::buildUi()
                                            juce::Slider::NoTextBox);
         s->setRange(min, max, 0.1);
         s->setValue(value, juce::dontSendNotification);
-        s->setBounds(x, 530, 130, 18);
+        s->setBounds(x, 610, 130, 18);
         addAndMakeVisible(*s);
     };
     auto makeOutLabel = [this](const juce::String& text, int x) {
         auto* l = new juce::Label();
         l->setText(text, juce::dontSendNotification);
-        l->setBounds(x, 528, 60, 20);
+        l->setBounds(x, 608, 60, 20);
         addAndMakeVisible(l);
     };
 
@@ -1118,18 +1388,27 @@ void NAMEditorApplication::buildUi()
     };
 
     muteToggle_ = std::make_unique<juce::ToggleButton>("Mute");
-    muteToggle_->setBounds(976, 526, 60, 22);
+    muteToggle_->setBounds(976, 606, 60, 22);
     addAndMakeVisible(*muteToggle_);
     muteToggle_->onClick = [this] {
         host_.output().setMute(muteToggle_->getToggleState());
     };
+
+    levelInLabel_ = std::make_unique<juce::Label>();
+    levelInLabel_->setBounds(1050, 608, 100, 18);
+    levelInLabel_->setColour(juce::Label::textColourId, NAMTheme::textDim());
+    addAndMakeVisible(*levelInLabel_);
+    levelOutLabel_ = std::make_unique<juce::Label>();
+    levelOutLabel_->setBounds(1150, 608, 100, 18);
+    levelOutLabel_->setColour(juce::Label::textColourId, NAMTheme::textDim());
+    addAndMakeVisible(*levelOutLabel_);
 
     // chain view: read-only summary of what is actually loaded
     chainLabel_ = std::make_unique<juce::TextEditor>();
     chainLabel_->setMultiLine(true);
     chainLabel_->setReadOnly(true);
     chainLabel_->setScrollbarsShown(true);
-    chainLabel_->setBounds(16, 560, 1240, 140);
+    chainLabel_->setBounds(16, 640, 1240, 220);
     addAndMakeVisible(*chainLabel_);
     chainLabel_->setText("(no preset loaded)", juce::dontSendNotification);
 

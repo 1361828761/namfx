@@ -56,6 +56,17 @@ private:
     ChainPanelContent& content_;
     bool dragging_ = false;
 };
+
+// MIDI input front-end: converts JUCE MIDI messages to engine events and
+// dispatches them on the UI thread (callAsync); also serves learn mode
+class MidiInputCallback : public juce::MidiInputCallback {
+public:
+    explicit MidiInputCallback(NAMEditorApplication& app) : app_(app) {}
+    void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage&) override;
+
+private:
+    NAMEditorApplication& app_;
+};
 // latency) is user-controllable.
 class NAMEditorApplication : public juce::JUCEApplication,
                              private juce::Timer,
@@ -77,6 +88,9 @@ public:
     // chain drag reorder callback (used by GripLabel / ChainPanelContent)
     void reorderChainByDrag(int srcSlot, int dstIndex);
 
+    // MIDI dispatch (UI thread, from MidiInputCallback)
+    void onMidiEvent(const midi::Event& event);
+
     // Timer: poll the tuner readout + scene/chain state
     void timerCallback() override;
 
@@ -96,6 +110,10 @@ private:
     void refreshModelLibrary();
     void addSectionLabel(const juce::String& text, int y);
     void saveUserPreset();
+    void rebuildSceneBar();
+    juce::String bindingSummary() const;
+    void beginLearnParam(const std::string& moduleId, const std::string& paramId);
+    void clearMidiBinds();
 
     // tunings, indexed 1st string (high E) .. 6th string (low E):
     // 0 = EADGBE (E4 B3 G3 D3 A2 E2), 1 = Drop D (E4 B3 G3 D3 A2 D2)
@@ -115,6 +133,7 @@ private:
     std::unique_ptr<EngineAudioSource> engineSource_;
     std::unique_ptr<juce::ComboBox> presetBox_;
     std::unique_ptr<juce::TextButton> loadButton_;
+    std::unique_ptr<juce::TextButton> delPresetButton_;
     std::unique_ptr<juce::Label> statusLabel_;
     std::unique_ptr<juce::Label> xrunLabel_; // under/overrun counter
     std::unique_ptr<juce::TextEditor> presetNameBox_;
@@ -127,6 +146,27 @@ private:
     std::unique_ptr<juce::TextButton> addModuleButton_;
     std::unique_ptr<juce::Viewport> chainPanelViewport_;
     std::unique_ptr<ChainPanelContent> chainPanelContent_;
+    // scene panel
+    std::unique_ptr<juce::Component> sceneBar_;
+    std::unique_ptr<juce::TextEditor> sceneNameBox_;
+    std::unique_ptr<juce::TextButton> sceneSaveButton_;
+    std::unique_ptr<juce::TextButton> sceneLearnButton_;
+    std::unique_ptr<juce::Label> midiBindLabel_;
+    std::unique_ptr<juce::TextButton> midiClearButton_;
+    int selectedScene_ = -1;
+    // MIDI learning state (UI thread)
+    std::unique_ptr<MidiInputCallback> midiCallback_;
+    struct LearnTarget {
+        std::string moduleId;
+        std::string paramId;
+    };
+    std::unique_ptr<LearnTarget> learningParam_;
+    int learningScene_ = 0; // 1-based scene index waiting for a CC
+    struct MidiBind {
+        int cc = 0;
+        juce::String target;
+    };
+    std::vector<MidiBind> midiBinds_;
     // output panel
     std::unique_ptr<juce::Slider> masterSlider_;
     std::unique_ptr<juce::Slider> inputGainSlider_;
@@ -134,6 +174,8 @@ private:
     std::unique_ptr<juce::Slider> midSlider_;
     std::unique_ptr<juce::Slider> trebleSlider_;
     std::unique_ptr<juce::ToggleButton> muteToggle_;
+    std::unique_ptr<juce::Label> levelInLabel_;
+    std::unique_ptr<juce::Label> levelOutLabel_;
     std::unique_ptr<juce::TextEditor> chainLabel_;
     // audio device panel
     std::unique_ptr<juce::ComboBox> deviceTypeBox_;
@@ -151,6 +193,7 @@ private:
     juce::File demoDir_;
     juce::File userPresetDir_;
     std::vector<juce::File> modelFiles_; // scanned NAM model library
+    std::vector<juce::File> irFiles_;    // scanned IR library
     int tuning_ = 0;
     bool tunerOn_ = true;
     juce::uint32 pendingUnmute_ = 0; // device switch: unmute after warm-up
