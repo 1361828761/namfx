@@ -139,6 +139,9 @@ void NAMEditorApplication::initialise(const juce::String&)
     }
     engineSource_ = std::make_unique<EngineAudioSource>(host_);
     player_.setSource(engineSource_.get());
+    // start muted: opening the device can pop (interface power-up noise);
+    // the timer fades the output in after the device has settled
+    host_.output().setMute(true);
     // request a small buffer for low round-trip latency; the device panel
     // lets the user pick exclusive / low-latency WASAPI modes and smaller
     // buffer sizes afterwards
@@ -155,6 +158,7 @@ void NAMEditorApplication::initialise(const juce::String&)
     }
     startTimer(kTimerMs);
     rebuildPresetList();
+    pendingUnmute_ = juce::Time::getMillisecondCounter() + 1500;
     crashLog("lifecycle: initialise done");
 }
 
@@ -351,7 +355,7 @@ void NAMEditorApplication::applyAudioSetup()
     deviceManager_.setCurrentAudioDeviceType(typeName, false);
     const juce::String err = deviceManager_.setAudioDeviceSetup(setup, true);
     host_.output().reset(); // clean filter states on the new device rate
-    pendingUnmute_ = juce::Time::getMillisecondCounter() + 1200;
+    pendingUnmute_ = juce::Time::getMillisecondCounter() + 2000;
     if (err.isNotEmpty()) {
         statusLabel_->setText("audio setup error: " + err, juce::dontSendNotification);
         return;
@@ -403,7 +407,7 @@ void NAMEditorApplication::buildUi()
             host_.output().setMute(true);
             deviceManager_.setCurrentAudioDeviceType(types[typeIdx - 1]->getTypeName(), false);
             refreshAudioDeviceControls();
-            pendingUnmute_ = juce::Time::getMillisecondCounter() + 800;
+            pendingUnmute_ = juce::Time::getMillisecondCounter() + 2000;
         }
     };
 
