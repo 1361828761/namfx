@@ -55,12 +55,13 @@ private:
     void applyAudioSetup();
     void updateTunerReadout();
 
-    // tunings: index 0 = EADGBE (E2 A2 D3 G3 B3 E4), 1 = Drop D (D2...)
+    // tunings, indexed 1st string (high E) .. 6th string (low E):
+    // 0 = EADGBE (E4 B3 G3 D3 A2 E2), 1 = Drop D (E4 B3 G3 D3 A2 D2)
     static constexpr int kTuningCount = 2;
     static constexpr int kStringCount = 6;
     static constexpr int kTargetNotes[kTuningCount][kStringCount] = {
-        {40, 45, 50, 55, 59, 64},
-        {38, 45, 50, 55, 59, 64},
+        {64, 59, 55, 50, 45, 40},
+        {64, 59, 55, 50, 45, 38},
     };
     static const char* kTuningNames[kTuningCount];
 
