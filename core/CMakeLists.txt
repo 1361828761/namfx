@@ -32,6 +32,7 @@ add_library(namfx_core STATIC
     preset/migration.cpp
     preset/atomic_write.cpp
     preset/backup.cpp
+    preset/export_import.cpp
 )
 
 target_include_directories(namfx_core PUBLIC
