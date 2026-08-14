@@ -33,6 +33,8 @@ add_executable(namfx_tests
     wav_io_test.cpp
     cab_ir_test.cpp
     partitioned_conv_test.cpp
+    resample_test.cpp
+    min_phase_test.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)

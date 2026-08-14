@@ -1,5 +1,6 @@
 #include "modules/ir/cab_ir.h"
 #include "modules/ir/fft.h"
+#include "modules/ir/min_phase.h"
 #include "modules/ir/partitioned_conv.h"
 #include "modules/module_registry.h"
 #include "platform/rt_alloc.h"
@@ -155,15 +156,16 @@ TEST_CASE("cab ir uses partitioned convolution for long impulse responses")
     float dummyR = 0.0f;
     mod->process(in.data(), &dummyR, out.data(), &dummyR, static_cast<int>(in.size()));
 
-    // partitioned path: output lags by one 1024 block; assets are
-    // peak-normalized to 1.0 on load, so normalize the reference too
+    // partitioned path: output lags by one 1024 block; cab.ir applies
+    // minimum phase + peak normalization on load, mirror that here
+    const std::vector<float> mp = namfx::ir::minimumPhase(ir);
     float peak = 0.0f;
-    for (float v : ir) {
+    for (float v : mp) {
         peak = std::max(peak, std::fabs(v));
     }
-    std::vector<float> normIr(ir.size());
-    for (std::size_t i = 0; i < ir.size(); ++i) {
-        normIr[i] = ir[i] / peak;
+    std::vector<float> normIr(mp.size());
+    for (std::size_t i = 0; i < mp.size(); ++i) {
+        normIr[i] = mp[i] / peak;
     }
     const std::vector<double> want = referenceConv(in, normIr);
     REQUIRE(maxAbsError(out, want, 1023, in.size() - 4096) < 1e-4);

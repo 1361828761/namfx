@@ -1,5 +1,6 @@
 #include "audio/chain.h"
 #include "modules/ir/cab_ir.h"
+#include "modules/ir/min_phase.h"
 #include "modules/ir/resample.h"
 #include "modules/module_registry.h"
 #include "platform/rt_alloc.h"
@@ -148,8 +149,16 @@ TEST_CASE("cab ir convolves within -100 dB of the double reference")
     float dummyR = 0.0f;
     mod->process(in.data(), &dummyR, out.data(), &dummyR, static_cast<int>(in.size()));
 
-    // assets are peak-normalized to 1.0 on load; gain 0.5 -> 0 dB (no scale)
-    const std::vector<float> normIr = {1.0f, 0.5f, 0.25f, -0.125f, 0.0625f};
+    // processing chain = minimum phase + peak normalize at 0 dB gain
+    const std::vector<float> mp = namfx::ir::minimumPhase(ir);
+    float peak = 0.0f;
+    for (float v : mp) {
+        peak = std::max(peak, std::fabs(v));
+    }
+    std::vector<float> normIr(mp.size());
+    for (std::size_t i = 0; i < mp.size(); ++i) {
+        normIr[i] = mp[i] / peak;
+    }
     const std::vector<double> want = referenceConv(in, normIr);
     REQUIRE(maxAbsError(out, want) < 1e-5);
     std::filesystem::remove_all(dir);
@@ -182,15 +191,16 @@ TEST_CASE("cab ir resamples a 24 kHz IR to the engine rate")
     float dummyR = 0.0f;
     mod->process(in.data(), &dummyR, out.data(), &dummyR, static_cast<int>(in.size()));
 
-    // reference: double resample + double convolution, peak-normalized
-    const std::vector<float> ir48 = namfx::ir::resampleLinear(ir, 24000.0, 48000.0);
+    // reference: sinc resample + minimum phase + peak normalize, double conv
+    const std::vector<float> ir48 = namfx::ir::resampleSinc(ir, 24000.0, 48000.0);
+    const std::vector<float> mp = namfx::ir::minimumPhase(ir48);
     float peak = 0.0f;
-    for (float v : ir48) {
+    for (float v : mp) {
         peak = std::max(peak, std::fabs(v));
     }
-    std::vector<float> normIr(ir48.size());
-    for (std::size_t i = 0; i < ir48.size(); ++i) {
-        normIr[i] = ir48[i] / peak;
+    std::vector<float> normIr(mp.size());
+    for (std::size_t i = 0; i < mp.size(); ++i) {
+        normIr[i] = mp[i] / peak;
     }
     const std::vector<double> want = referenceConv(in, normIr);
     REQUIRE(maxAbsError(out, want) < 1e-5);
@@ -302,9 +312,14 @@ TEST_CASE("cab ir loads through the chain with a preset file field")
     std::vector<float> out(1000, 0.0f);
     in[0] = 1.0f;
     chain.process(in.data(), in.data(), out.data(), out.data(), 1000);
-    // impulse convolved with peak-normalized [1.0, 0.5] at 0 dB gain
-    REQUIRE(std::fabs(out[0] - 1.0f) < 1e-5f);
-    REQUIRE(std::fabs(out[1] - 0.5f) < 1e-5f);
+    // impulse convolved with peak-normalized minimum-phase [0.5, 0.25]
+    const std::vector<float> mp = namfx::ir::minimumPhase(ir);
+    float peak = 0.0f;
+    for (float v : mp) {
+        peak = std::max(peak, std::fabs(v));
+    }
+    REQUIRE(std::fabs(out[0] - mp[0] / peak) < 1e-5f);
+    REQUIRE(std::fabs(out[1] - mp[1] / peak) < 1e-5f);
     std::filesystem::remove_all(dir);
 }
 

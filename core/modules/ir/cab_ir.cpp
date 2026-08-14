@@ -1,5 +1,6 @@
 #include "modules/ir/cab_ir.h"
 
+#include "modules/ir/min_phase.h"
 #include "modules/ir/resample.h"
 #include "modules/module_registry.h"
 
@@ -45,7 +46,8 @@ void CabIrModule::prepare(double sampleRate, int maxBlockSize)
     maxBlock_ = std::max(maxBlockSize, 1);
 
     if (assetLoaded_) {
-        ir_ = ir::resampleLinear(rawIr_, rawRate_, sampleRate);
+        ir_ = ir::resampleSinc(rawIr_, rawRate_, sampleRate);
+        ir_ = ir::minimumPhase(ir_);
         // normalize peak to 1.0 so the 0 dB default gain is safe for any
         // measured impulse response (measured IR gain is meaningless)
         float peak = 0.0f;
