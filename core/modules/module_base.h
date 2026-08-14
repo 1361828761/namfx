@@ -26,6 +26,14 @@ public:
         (void)id;
         (void)value;
     }
+
+    // asset-backed modules (IR, NAM later) load their file here; called on
+    // the load path, never from the audio callback
+    virtual bool loadAsset(const std::string& path)
+    {
+        (void)path;
+        return false;
+    }
 };
 
 } // namespace namfx

@@ -18,6 +18,7 @@
 #include "modules/dsp/pitch_shifter.h"
 #include "modules/dsp/octave.h"
 #include "modules/dsp/hall_reverb.h"
+#include "modules/ir/cab_ir.h"
 #include "modules/module_base.h"
 #include "modules/module_registry.h"
 
@@ -65,6 +66,7 @@ inline std::shared_ptr<const namfx::ModuleRegistry> makeRegistry()
     namfx::registerPitchShifter(*registry);
     namfx::registerOctave(*registry);
     namfx::registerHallReverb(*registry);
+    namfx::registerCabIr(*registry);
     registry->registerModule("stereo.passthrough", "pedal", {},
                              [] { return std::make_unique<StereoPassthroughModule>(); });
     return registry;

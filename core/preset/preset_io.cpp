@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <string>
 #include <utility>
 
@@ -86,6 +87,17 @@ bool loadSlot(const nlohmann::json& slotNode, const ModuleRegistry& registry, Lo
     out.category = slotNode["category"].get<std::string>();
     out.impl = slotNode["impl"].get<std::string>();
     out.moduleId = slotNode["module"].get<std::string>();
+    if (slotNode.contains("file")) {
+        if (!slotNode["file"].is_string()) {
+            if (mode == LoadMode::Strict) {
+                report.errors.push_back("slot file must be a string");
+                return false;
+            }
+            report.warnings.push_back("slot file ignored: not a string");
+        } else {
+            out.file = slotNode["file"].get<std::string>();
+        }
+    }
     if (!registry.has(out.moduleId)) {
         if (mode == LoadMode::Strict) {
             report.errors.push_back("unknown module id: " + out.moduleId);
@@ -196,7 +208,7 @@ bool loadScenes(const nlohmann::json& scenesNode, const ModuleRegistry& registry
 } // namespace
 
 Preset loadPreset(const std::string& jsonText, LoadMode mode, const ModuleRegistry& registry,
-                  LoadReport& report)
+                  LoadReport& report, const std::string& baseDir)
 {
     Preset preset;
     nlohmann::json doc;
@@ -271,6 +283,10 @@ Preset loadPreset(const std::string& jsonText, LoadMode mode, const ModuleRegist
         if (def.moduleId.empty()) {
             continue;
         }
+        // resolve relative asset paths against the preset directory
+        if (!def.file.empty() && !baseDir.empty()) {
+            def.file = (std::filesystem::path(baseDir) / def.file).string();
+        }
         preset.chain.push_back(std::move(def));
     }
 
@@ -295,6 +311,9 @@ std::string savePreset(const Preset& preset)
         slotNode["category"] = slot.category;
         slotNode["impl"] = slot.impl;
         slotNode["module"] = slot.moduleId;
+        if (!slot.file.empty()) {
+            slotNode["file"] = slot.file;
+        }
         nlohmann::json params = nlohmann::json::object();
         for (const ParamInit& param : slot.params) {
             params[param.id] = param.value;

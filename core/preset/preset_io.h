@@ -25,7 +25,7 @@ struct LoadReport {
 };
 
 Preset loadPreset(const std::string& jsonText, LoadMode mode, const ModuleRegistry& registry,
-                  LoadReport& report);
+                  LoadReport& report, const std::string& baseDir = "");
 
 std::string savePreset(const Preset& preset);
 

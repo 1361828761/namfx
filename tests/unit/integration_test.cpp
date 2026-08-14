@@ -68,7 +68,8 @@ TEST_CASE("every demo preset loads strictly and produces non silent output")
         INFO("preset " << path.filename().string());
         namfx::preset::LoadReport report;
         const namfx::preset::Preset preset = namfx::preset::loadPreset(
-            readFile(path), namfx::preset::LoadMode::Strict, *registry, report);
+            readFile(path), namfx::preset::LoadMode::Strict, *registry, report,
+            path.parent_path().string());
         REQUIRE(report.ok());
         REQUIRE_FALSE(preset.chain.empty());
 

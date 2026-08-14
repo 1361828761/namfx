@@ -22,6 +22,8 @@ add_library(namfx_core STATIC
     modules/dsp/pitch_shifter.cpp
     modules/dsp/octave.cpp
     modules/dsp/hall_reverb.cpp
+    modules/ir/wav_io.cpp
+    modules/ir/cab_ir.cpp
     preset/preset_model.cpp
     preset/preset_io.cpp
     preset/migration.cpp

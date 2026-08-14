@@ -17,6 +17,7 @@
 #include "modules/dsp/pitch_shifter.h"
 #include "modules/dsp/octave.h"
 #include "modules/dsp/hall_reverb.h"
+#include "modules/ir/cab_ir.h"
 #include "modules/module_registry.h"
 #include "preset/preset_io.h"
 
@@ -24,6 +25,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -256,10 +258,12 @@ int main(int argc, char** argv)
     namfx::registerPitchShifter(*registry);
     namfx::registerOctave(*registry);
     namfx::registerHallReverb(*registry);
+    namfx::registerCabIr(*registry);
 
     namfx::preset::LoadReport report;
     namfx::preset::Preset preset = namfx::preset::loadPreset(
-        text, namfx::preset::LoadMode::Strict, *registry, report);
+        text, namfx::preset::LoadMode::Strict, *registry, report,
+        std::filesystem::path(presetPath).parent_path().string());
     if (!report.ok()) {
         std::printf("error: preset rejected:");
         for (const std::string& err : report.errors) {

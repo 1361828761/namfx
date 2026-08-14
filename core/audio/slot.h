@@ -13,6 +13,7 @@ struct SlotDef {
     std::string category;
     std::string impl;
     std::string moduleId;
+    std::string file; // asset path (IR wav / NAM model), PLAN §7 v1 field
     std::vector<ParamInit> params;
     bool bypass = false;
     float mix = 1.0f;

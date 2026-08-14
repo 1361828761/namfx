@@ -52,6 +52,10 @@ Chain::Chain(std::vector<SlotDef> slots, std::shared_ptr<const ModuleRegistry> r
         runtime.def = std::move(def);
         runtime.specs = registry_->specsFor(runtime.def.moduleId);
         runtime.module = registry_->create(runtime.def.moduleId);
+        if (!runtime.def.file.empty() && !runtime.module->loadAsset(runtime.def.file)) {
+            throw std::runtime_error("chain: failed to load asset '" + runtime.def.file
+                                     + "' for module '" + runtime.def.moduleId + "'");
+        }
         runtime.store = std::make_unique<ParamStore>(runtime.specs);
         for (const ParamInit& init : runtime.def.params) {
             const ParamSpec* spec = registry_->findParam(runtime.def.moduleId, init.id);
