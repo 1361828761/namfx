@@ -400,6 +400,45 @@ TEST_CASE("snapshotChain captures modules, current values, bypass and mix")
     }
 }
 
+TEST_CASE("reorderChain moves a slot to the requested position")
+{
+    std::vector<namfx::audio::SlotDef> slots;
+    for (int i = 0; i < 3; ++i) {
+        namfx::audio::SlotDef def;
+        def.slot = i;
+        def.moduleId = "m" + std::to_string(i);
+        def.params.push_back(namfx::ParamInit{"gain", 0.0f});
+        slots.push_back(def);
+    }
+    bool ok = false;
+    // move slot 0 in front of slot 2 (final position 2): [1, 0, 2]
+    auto r = namfx::audio::reorderChain(slots, 0, 2, ok);
+    REQUIRE(ok);
+    REQUIRE(r.size() == 3);
+    REQUIRE(r[0].slot == 1);
+    REQUIRE(r[1].slot == 0);
+    REQUIRE(r[2].slot == 2);
+    // move slot 0 to the very end (final position 3 = N): [1, 2, 0]
+    r = namfx::audio::reorderChain(slots, 0, 3, ok);
+    REQUIRE(ok);
+    REQUIRE(r[0].slot == 1);
+    REQUIRE(r[1].slot == 2);
+    REQUIRE(r[2].slot == 0);
+    // move slot 2 to the front (final position 0): [2, 0, 1]
+    r = namfx::audio::reorderChain(slots, 2, 0, ok);
+    REQUIRE(ok);
+    REQUIRE(r[0].slot == 2);
+    REQUIRE(r[1].slot == 0);
+    REQUIRE(r[2].slot == 1);
+    // unknown slot / bad index
+    r = namfx::audio::reorderChain(slots, 99, 0, ok);
+    REQUIRE_FALSE(ok);
+    r = namfx::audio::reorderChain(slots, 0, 99, ok);
+    REQUIRE_FALSE(ok);
+    r = namfx::audio::reorderChain(slots, 0, -1, ok);
+    REQUIRE_FALSE(ok);
+}
+
 TEST_CASE("reset restores a chain to its initial state")
 {
     auto registry = testx::makeRegistry();

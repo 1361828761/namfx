@@ -65,7 +65,12 @@ public:
     bool addModuleToChain(const std::string& moduleId, const std::string& assetFile,
                           std::string& error);
     bool removeModuleFromChain(int slot, std::string& error);
+    bool moveModuleTo(int slot, int dstIndex, std::string& error); // drag reorder
+    bool moveModule(int slot, int direction, std::string& error);  // up/down buttons
     std::vector<std::string> moduleIds() const;
+
+    // save the live chain as a user preset (schema 1 JSON) into dir
+    bool savePreset(const std::string& name, const std::string& dir, std::string& error);
 
     // structured chain readout for the edit panel
     struct SlotInfo {

@@ -22,11 +22,40 @@ public:
     void closeButtonPressed() override;
 };
 
-// Desktop editor shell (M5a): the engine host in the audio callback, a
-// preset control bar, a chain view, an audio-device panel (device type /
-// device / sample rate / buffer size -> latency control) and a per-string
-// tuner readout. The audio path is an AudioDeviceManager + AudioSourcePlayer
-// + EngineAudioSource so the buffer size (and with it the round-trip
+class NAMEditorApplication;
+
+// Scrollable chain-edit surface: hosts the per-slot rows and shows a drop
+// line while a reorder drag is in progress
+class ChainPanelContent : public juce::Component {
+public:
+    void paint(juce::Graphics&) override;
+    // row boundaries (end y of each module block), filled by the panel
+    // rebuild so drop-position mapping is per-block, not per-child
+    void setRowBounds(const std::vector<int>& bounds) { rowBounds_ = bounds; }
+    void setDropIndexAt(int y);
+    int takeDropIndex();
+    int dropIndex() const { return dropIndex_; }
+
+private:
+    std::vector<int> rowBounds_;
+    int dropIndex_ = -1;
+};
+
+// Drag grip on a chain row: drag up/down reorders the module (self-managed
+// drag, no JUCE DragAndDropContainer dependency)
+class GripLabel : public juce::Label {
+public:
+    GripLabel(int slot, NAMEditorApplication& app, ChainPanelContent& content);
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+
+private:
+    int slot_;
+    NAMEditorApplication& app_;
+    ChainPanelContent& content_;
+    bool dragging_ = false;
+};
 // latency) is user-controllable.
 class NAMEditorApplication : public juce::JUCEApplication,
                              private juce::Timer,
@@ -45,12 +74,16 @@ public:
     // Component: content pane of the MainWindow
     void paint(juce::Graphics&) override;
 
+    // chain drag reorder callback (used by GripLabel / ChainPanelContent)
+    void reorderChainByDrag(int srcSlot, int dstIndex);
+
     // Timer: poll the tuner readout + scene/chain state
     void timerCallback() override;
 
 private:
     void rebuildPresetList();
     void loadSelectedPreset();
+    void loadPresetFile(const juce::File& file);
     void buildUi();
     void refreshAudioDeviceControls();
     void applyAudioSetup();
@@ -62,6 +95,7 @@ private:
     void refreshAssetList();
     void refreshModelLibrary();
     void addSectionLabel(const juce::String& text, int y);
+    void saveUserPreset();
 
     // tunings, indexed 1st string (high E) .. 6th string (low E):
     // 0 = EADGBE (E4 B3 G3 D3 A2 E2), 1 = Drop D (E4 B3 G3 D3 A2 D2)
@@ -83,13 +117,16 @@ private:
     std::unique_ptr<juce::TextButton> loadButton_;
     std::unique_ptr<juce::Label> statusLabel_;
     std::unique_ptr<juce::Label> xrunLabel_; // under/overrun counter
+    std::unique_ptr<juce::TextEditor> presetNameBox_;
+    std::unique_ptr<juce::TextButton> savePresetButton_;
+    std::vector<juce::File> presetFiles_; // demo + user presets (combo ids)
     // chain editing (M5c)
     std::unique_ptr<juce::ComboBox> addGroupBox_;   // module category
     std::unique_ptr<juce::ComboBox> addModuleBox_;  // module within category
     std::unique_ptr<juce::ComboBox> addAssetBox_;   // NAM model / IR library
     std::unique_ptr<juce::TextButton> addModuleButton_;
     std::unique_ptr<juce::Viewport> chainPanelViewport_;
-    std::unique_ptr<juce::Component> chainPanelContent_;
+    std::unique_ptr<ChainPanelContent> chainPanelContent_;
     // output panel
     std::unique_ptr<juce::Slider> masterSlider_;
     std::unique_ptr<juce::Slider> inputGainSlider_;
@@ -112,6 +149,7 @@ private:
     std::unique_ptr<juce::Label> tunerLabel_;
     std::unique_ptr<juce::Label> sceneLabel_;
     juce::File demoDir_;
+    juce::File userPresetDir_;
     std::vector<juce::File> modelFiles_; // scanned NAM model library
     int tuning_ = 0;
     bool tunerOn_ = true;

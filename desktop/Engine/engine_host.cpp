@@ -322,6 +322,89 @@ bool EngineHost::removeModuleFromChain(int slot, std::string& error)
     return rebuildChain(std::move(slots), error);
 }
 
+bool EngineHost::moveModuleTo(int slot, int dstIndex, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    std::vector<audio::SlotDef> slots = audio::snapshotChain(*chain_);
+    bool ok = false;
+    std::vector<audio::SlotDef> reordered = audio::reorderChain(slots, slot, dstIndex, ok);
+    if (!ok) {
+        error = "cannot reorder slot " + std::to_string(slot);
+        return false;
+    }
+    return rebuildChain(std::move(reordered), error);
+}
+
+bool EngineHost::moveModule(int slot, int direction, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    int index = -1;
+    for (int i = 0; i < chain_->slotCount(); ++i) {
+        try {
+            if (chain_->defOf(i).slot == slot) {
+                index = i;
+                break;
+            }
+        } catch (const std::out_of_range&) {
+        }
+    }
+    if (index < 0) {
+        error = "no slot " + std::to_string(slot);
+        return false;
+    }
+    const int dst = index + direction;
+    if (dst < 0 || dst >= chain_->slotCount()) {
+        error = "already at the edge";
+        return false;
+    }
+    std::vector<audio::SlotDef> slots = audio::snapshotChain(*chain_);
+    bool ok = false;
+    std::vector<audio::SlotDef> reordered = audio::reorderChain(slots, slot, dst, ok);
+    if (!ok) {
+        error = "cannot reorder slot " + std::to_string(slot);
+        return false;
+    }
+    return rebuildChain(std::move(reordered), error);
+}
+
+bool EngineHost::savePreset(const std::string& name, const std::string& dir, std::string& error)
+{
+    if (name.empty() || name.find_first_of("/\\") != std::string::npos) {
+        error = "invalid preset name";
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    preset::Preset preset;
+    preset.name = name;
+    preset.chain = audio::snapshotChain(*chain_);
+    const std::string json = preset::savePreset(preset);
+    const std::string path = dir + "/" + name + ".json";
+    std::ofstream f(path, std::ios::binary);
+    if (!f) {
+        error = "cannot write " + path;
+        return false;
+    }
+    f << json;
+    f.close();
+    if (!f) {
+        error = "write failed: " + path;
+        return false;
+    }
+    return true;
+}
+
 std::vector<std::string> EngineHost::moduleIds() const
 {
     return registry_->allIds();

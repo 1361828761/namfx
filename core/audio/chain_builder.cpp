@@ -31,5 +31,35 @@ std::vector<SlotDef> snapshotChain(const Chain& chain)
     return out;
 }
 
+std::vector<SlotDef> reorderChain(const std::vector<SlotDef>& slots, int slot, int dstIndex,
+                                  bool& ok)
+{
+    ok = false;
+    std::vector<SlotDef> out = slots;
+    std::size_t src = out.size();
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        if (out[i].slot == slot) {
+            src = i;
+            break;
+        }
+    }
+    if (src == out.size() || dstIndex < 0 || dstIndex > static_cast<int>(out.size())) {
+        return out;
+    }
+    SlotDef def = std::move(out[src]);
+    out.erase(out.begin() + static_cast<std::ptrdiff_t>(src));
+    // dstIndex is the FINAL position (0..N, N = end of list); after the
+    // removal the insert index shifts left when the target was past the
+    // source
+    int ins = dstIndex;
+    if (dstIndex > src) {
+        ins = dstIndex - 1;
+    }
+    ins = std::max(0, std::min(ins, static_cast<int>(out.size())));
+    out.insert(out.begin() + ins, std::move(def));
+    ok = true;
+    return out;
+}
+
 } // namespace audio
 } // namespace namfx

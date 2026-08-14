@@ -250,6 +250,9 @@ void NAMEditorApplication::initialise(const juce::String&)
     crashLog("lifecycle: initialise begin");
     juce::LookAndFeel::setDefaultLookAndFeel(&theme_);
     demoDir_ = juce::File(NAMFX_DEMO_DIR);
+    userPresetDir_ = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                         .getChildFile("namfx")
+                         .getChildFile("presets");
     if (!demoDir_.isDirectory()) {
         // fall back to the working directory (dev launches from the repo root)
         demoDir_ = juce::File::getCurrentWorkingDirectory().getChildFile("core/preset/demo");
@@ -287,6 +290,14 @@ void NAMEditorApplication::initialise(const juce::String&)
     rebuildPresetList();
     pendingUnmute_ = juce::Time::getMillisecondCounter() + 1500;
     crashLog("lifecycle: initialise done");
+    // load a default preset so the chain is never empty at startup
+    juce::File defaultPreset = demoDir_.getChildFile("clean.json");
+    if (!defaultPreset.exists()) {
+        defaultPreset = demoDir_.getChildFile("boost.json");
+    }
+    if (defaultPreset.exists()) {
+        loadPresetFile(defaultPreset);
+    }
 }
 
 void NAMEditorApplication::shutdown()
@@ -380,6 +391,7 @@ void NAMEditorApplication::updateTunerReadout()
 void NAMEditorApplication::rebuildPresetList()
 {
     presetBox_->clear(juce::dontSendNotification);
+    presetFiles_.clear();
     if (!demoDir_.isDirectory()) {
         statusLabel_->setText("demo preset dir not found: " + demoDir_.getFullPathName(),
                               juce::dontSendNotification);
@@ -387,25 +399,35 @@ void NAMEditorApplication::rebuildPresetList()
     }
     juce::Array<juce::File> presets;
     demoDir_.findChildFiles(presets, juce::File::findFiles, false, "*.json");
+    presets.sort();
+    presetBox_->addSectionHeading("Demo");
     for (const juce::File& f : presets) {
-        presetBox_->addItem(f.getFileNameWithoutExtension(), presetBox_->getNumItems() + 1);
+        presetFiles_.push_back(f);
+        presetBox_->addItem(f.getFileNameWithoutExtension(),
+                            static_cast<int>(presetFiles_.size()));
     }
-    statusLabel_->setText(juce::String(presets.size()) + " demo presets",
+    // user presets (Documents/namfx/presets)
+    userPresetDir_.createDirectory();
+    juce::Array<juce::File> mine;
+    userPresetDir_.findChildFiles(mine, juce::File::findFiles, false, "*.json");
+    mine.sort();
+    if (!mine.isEmpty()) {
+        presetBox_->addSectionHeading("Mine");
+        for (const juce::File& f : mine) {
+            presetFiles_.push_back(f);
+            presetBox_->addItem(f.getFileNameWithoutExtension(),
+                                static_cast<int>(presetFiles_.size()));
+        }
+    }
+    if (!presetFiles_.empty()) {
+        presetBox_->setSelectedId(1, juce::dontSendNotification);
+    }
+    statusLabel_->setText(juce::String(presetFiles_.size()) + " presets",
                           juce::dontSendNotification);
 }
 
-void NAMEditorApplication::loadSelectedPreset()
+void NAMEditorApplication::loadPresetFile(const juce::File& file)
 {
-    const int idx = presetBox_->getSelectedId();
-    if (idx <= 0) {
-        return;
-    }
-    juce::Array<juce::File> presets;
-    demoDir_.findChildFiles(presets, juce::File::findFiles, false, "*.json");
-    if (idx > presets.size()) {
-        return;
-    }
-    const juce::File file = presets[static_cast<int>(idx - 1)];
     std::string error;
     const bool ok = host_.loadPreset(file.getFullPathName().toStdString(),
                                      demoDir_.getFullPathName().toStdString(), error);
@@ -415,6 +437,15 @@ void NAMEditorApplication::loadSelectedPreset()
     } else {
         statusLabel_->setText("load failed: " + juce::String(error), juce::dontSendNotification);
     }
+}
+
+void NAMEditorApplication::loadSelectedPreset()
+{
+    const int idx = presetBox_->getSelectedId();
+    if (idx <= 0 || idx > static_cast<int>(presetFiles_.size())) {
+        return;
+    }
+    loadPresetFile(presetFiles_[static_cast<std::size_t>(idx - 1)]);
 }
 
 void NAMEditorApplication::refreshModelLibrary()
@@ -555,20 +586,158 @@ void NAMEditorApplication::addSectionLabel(const juce::String& text, int y)
     addAndMakeVisible(l);
 }
 
+void NAMEditorApplication::saveUserPreset()
+{
+    const juce::String name = presetNameBox_->getText().trim();
+    if (name.isEmpty()) {
+        statusLabel_->setText("enter a preset name first", juce::dontSendNotification);
+        return;
+    }
+    if (name.containsChar('/') || name.containsChar('\\') || name.containsChar('.')) {
+        statusLabel_->setText("invalid name (no / \\ .)", juce::dontSendNotification);
+        return;
+    }
+    // user preset cap: 100
+    juce::Array<juce::File> mine;
+    userPresetDir_.findChildFiles(mine, juce::File::findFiles, false, "*.json");
+    if (mine.size() >= 100) {
+        statusLabel_->setText("preset limit reached (100)", juce::dontSendNotification);
+        return;
+    }
+    std::string error;
+    if (host_.savePreset(name.toStdString(), userPresetDir_.getFullPathName().toStdString(),
+                         error)) {
+        statusLabel_->setText("saved " + name, juce::dontSendNotification);
+        presetNameBox_->clear();
+        rebuildPresetList();
+        // select the newly saved preset
+        for (std::size_t i = 0; i < presetFiles_.size(); ++i) {
+            if (presetFiles_[i].getFileNameWithoutExtension() == name) {
+                presetBox_->setSelectedId(static_cast<int>(i + 1), juce::dontSendNotification);
+                break;
+            }
+        }
+    } else {
+        statusLabel_->setText("save failed: " + juce::String(error), juce::dontSendNotification);
+    }
+}
+
+GripLabel::GripLabel(int slot, NAMEditorApplication& app, ChainPanelContent& content)
+    : slot_(slot), app_(app), content_(content)
+{
+    setText("::", juce::dontSendNotification);
+    setColour(juce::Label::textColourId, NAMTheme::textDim());
+    setMouseCursor(juce::MouseCursor::DraggingHandCursor);
+}
+
+void GripLabel::mouseDown(const juce::MouseEvent&)
+{
+    dragging_ = true;
+}
+
+void GripLabel::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!dragging_) {
+        return;
+    }
+    // map the mouse into the panel and update the insertion indicator
+    const juce::Point<int> p = content_.getLocalPoint(e.eventComponent, e.getPosition());
+    content_.setDropIndexAt(p.getY());
+}
+
+void GripLabel::mouseUp(const juce::MouseEvent&)
+{
+    if (!dragging_) {
+        return;
+    }
+    dragging_ = false;
+    const int dst = content_.takeDropIndex();
+    if (dst >= 0) {
+        app_.reorderChainByDrag(slot_, dst);
+    }
+}
+
+void ChainPanelContent::setDropIndexAt(int y)
+{
+    int row = 0;
+    for (int i = 0; i < static_cast<int>(rowBounds_.size()); ++i) {
+        if (y < rowBounds_[static_cast<std::size_t>(i)]) {
+            row = i;
+            break;
+        }
+        row = i + 1;
+    }
+    dropIndex_ = row;
+    repaint();
+}
+
+int ChainPanelContent::takeDropIndex()
+{
+    const int d = dropIndex_;
+    dropIndex_ = -1;
+    repaint();
+    return d;
+}
+
+void ChainPanelContent::paint(juce::Graphics& g)
+{
+    g.fillAll(NAMTheme::panel());
+    if (dropIndex_ >= 0 && dropIndex_ < static_cast<int>(rowBounds_.size())) {
+        // insertion indicator between rows
+        const int y = rowBounds_[static_cast<std::size_t>(dropIndex_)] - 2;
+        g.setColour(NAMTheme::accent());
+        g.fillRect(4, y, getWidth() - 8, 2);
+    }
+}
+
+void NAMEditorApplication::reorderChainByDrag(int srcSlot, int dstIndex)
+{
+    std::string error;
+    if (host_.moveModuleTo(srcSlot, dstIndex, error)) {
+        refreshChainViews();
+    } else {
+        statusLabel_->setText("reorder failed: " + juce::String(error),
+                              juce::dontSendNotification);
+    }
+}
+
 void NAMEditorApplication::rebuildChainPanel()
 {
     chainPanelContent_->removeAllChildren();
     const std::vector<EngineHost::SlotInfo> infos = host_.chainInfo();
     int y = 4;
+    std::vector<int> bounds;
     for (const EngineHost::SlotInfo& info : infos) {
+        auto* grip = new GripLabel(info.slot, *this, *chainPanelContent_);
+        grip->setBounds(4, y + 1, 18, 18);
+        chainPanelContent_->addAndMakeVisible(grip);
+
         auto* name = new juce::Label();
         name->setText(juce::String(info.slot) + "  " + info.moduleId, juce::dontSendNotification);
-        name->setBounds(8, y, 160, 20);
+        name->setBounds(26, y, 150, 20);
         chainPanelContent_->addAndMakeVisible(name);
+
+        auto* up = new juce::TextButton("^");
+        up->setBounds(164, y, 22, 20);
+        chainPanelContent_->addAndMakeVisible(up);
+        up->onClick = [this, slot = info.slot] {
+            std::string error;
+            host_.moveModule(slot, -1, error);
+            refreshChainViews();
+        };
+
+        auto* dn = new juce::TextButton("v");
+        dn->setBounds(188, y, 22, 20);
+        chainPanelContent_->addAndMakeVisible(dn);
+        dn->onClick = [this, slot = info.slot] {
+            std::string error;
+            host_.moveModule(slot, 1, error);
+            refreshChainViews();
+        };
 
         auto* bp = new juce::ToggleButton("Byp");
         bp->setToggleState(info.bypass, juce::dontSendNotification);
-        bp->setBounds(176, y, 44, 20);
+        bp->setBounds(214, y, 44, 20);
         chainPanelContent_->addAndMakeVisible(bp);
         bp->onClick = [this, slot = info.slot, bp] {
             host_.uiSetBypass(slot, bp->getToggleState());
@@ -613,8 +782,10 @@ void NAMEditorApplication::rebuildChainPanel()
         };
 
         y = py + 6;
+        bounds.push_back(y);
     }
     chainPanelContent_->setSize(1220, std::max(y, 200));
+    chainPanelContent_->setRowBounds(bounds);
     chainPanelViewport_->setViewedComponent(chainPanelContent_.get(), false);
 }
 
@@ -739,6 +910,17 @@ void NAMEditorApplication::buildUi()
     loadButton_->setBounds(384, 26, 72, 28);
     addAndMakeVisible(*loadButton_);
     loadButton_->onClick = [this] { loadSelectedPreset(); };
+
+    // save the current chain as a user preset (up to 100)
+    presetNameBox_ = std::make_unique<juce::TextEditor>();
+    presetNameBox_->setText("my_tone", false);
+    presetNameBox_->setBounds(464, 26, 160, 28);
+    addAndMakeVisible(*presetNameBox_);
+
+    savePresetButton_ = std::make_unique<juce::TextButton>("Save");
+    savePresetButton_->setBounds(630, 26, 56, 28);
+    addAndMakeVisible(*savePresetButton_);
+    savePresetButton_->onClick = [this] { saveUserPreset(); };
 
     statusLabel_ = std::make_unique<juce::Label>();
     statusLabel_->setBounds(470, 30, 560, 20);
@@ -884,7 +1066,7 @@ void NAMEditorApplication::buildUi()
     chainPanelViewport_ = std::make_unique<juce::Viewport>();
     chainPanelViewport_->setBounds(16, 252, 1240, 250);
     addAndMakeVisible(*chainPanelViewport_);
-    chainPanelContent_ = std::make_unique<juce::Component>();
+    chainPanelContent_ = std::make_unique<ChainPanelContent>();
     chainPanelViewport_->setViewedComponent(chainPanelContent_.get(), false);
 
     addSectionLabel("OUTPUT", 510);
