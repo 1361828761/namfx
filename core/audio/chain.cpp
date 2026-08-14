@@ -115,6 +115,12 @@ void Chain::prepare(double sampleRate, int maxBlockSize)
         runtime.module->setSampleRate(sampleRate);
         runtime.module->setMaxBlock(maxBlock_);
         runtime.store->setSampleRate(sampleRate);
+        // push current parameter values so asset options (e.g. NAM tier)
+        // see their targets before the first audio callback
+        for (const ParamSpec& spec : runtime.specs) {
+            runtime.module->setParameter(spec.id, runtime.store->get(spec.id));
+        }
+        runtime.module->applyAssetOptions();
     }
 }
 

@@ -1,4 +1,4 @@
-// Global module ID uniqueness (PLAN §5: build-time duplicate ID detection).
+// Global module ID uniqueness (PLAN sec 5: build-time duplicate ID detection).
 // Every built-in registerX() must be called into one registry and every ID
 // must be unique - a typo'd duplicate across module files is caught here.
 #include "test_registry.h"

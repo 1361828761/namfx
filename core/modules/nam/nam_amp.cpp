@@ -5,6 +5,7 @@
 
 #include "dsp.h"
 #include "get_dsp.h"
+#include "slimmable.h"
 
 #include <algorithm>
 #include <cmath>
@@ -33,6 +34,9 @@ struct NamAmpModule::Impl {
     double modelRate = 48000.0;
     double engineRate = 48000.0;
     bool prepared = false;
+    bool slimmable = false;
+    float tier = 1.0f;
+    float tierApplied = 1.0f;
 
     bool resampleIn = false;
     ir::StreamingResampler inRes;
@@ -118,11 +122,27 @@ bool NamAmpModule::loadAsset(const std::string& path)
         impl_->dsp = nam::get_dsp(std::filesystem::path(path));
         const double expected = impl_->dsp->GetExpectedSampleRate();
         impl_->modelRate = expected > 0.0 ? expected : 48000.0;
+        impl_->slimmable = dynamic_cast<nam::SlimmableModel*>(impl_->dsp.get()) != nullptr;
         return true;
     } catch (const std::exception&) {
         impl_.reset();
         return false;
     }
+}
+
+void NamAmpModule::applyTier()
+{
+    if (!impl_ || !impl_->slimmable || !impl_->dsp) {
+        return;
+    }
+    if (std::fabs(impl_->tier - impl_->tierApplied) < 1e-6f) {
+        return;
+    }
+    // NAM Core's SetSlimmableSize locks a mutex and resets the active
+    // submodel (with prewarm): control thread only
+    auto* slim = dynamic_cast<nam::SlimmableModel*>(impl_->dsp.get());
+    slim->SetSlimmableSize(impl_->tier);
+    impl_->tierApplied = impl_->tier;
 }
 
 void NamAmpModule::prepare(double sampleRate, int maxBlockSize)
@@ -158,6 +178,7 @@ void NamAmpModule::prepare(double sampleRate, int maxBlockSize)
     impl_->outQWrite = 0;
 
     impl_->dsp->Reset(impl_->modelRate, impl_->dspBlockMax);
+    applyTier(); // control thread; restores the tier target (idempotent)
     impl_->updateEqCoeffs(static_cast<float>(impl_->engineRate));
     impl_->bX1 = impl_->bX2 = impl_->bY1 = impl_->bY2 = 0.0f;
     impl_->mX1 = impl_->mX2 = impl_->mY1 = impl_->mY2 = 0.0f;
@@ -271,6 +292,7 @@ void NamAmpModule::reset()
     impl_->middleSm = impl_->middle;
     impl_->trebleSm = impl_->treble;
     impl_->outputSm = impl_->output;
+    applyTier(); // control thread: restore the tier target after a reload
 }
 
 void NamAmpModule::setSampleRate(double)
@@ -298,6 +320,10 @@ void NamAmpModule::setParameter(const std::string& id, float value)
         impl_->treble = value;
     } else if (id == "output") {
         impl_->output = value;
+    } else if (id == "tier") {
+        // audio-callback thread only records the target; applyTier() (a
+        // control-thread call) performs the actual slimmable switch
+        impl_->tier = value;
     }
 }
 
@@ -309,6 +335,7 @@ void registerNamAmp(ModuleRegistry& registry)
     specs.push_back(ParamSpec{"middle", "Middle", 0.0f, 1.0f, 0.5f, "", Taper::Linear});
     specs.push_back(ParamSpec{"treble", "Treble", 0.0f, 1.0f, 0.5f, "", Taper::Linear});
     specs.push_back(ParamSpec{"output", "Output", 0.0f, 1.0f, 0.5f, "", Taper::Linear});
+    specs.push_back(ParamSpec{"tier", "Tier", 0.0f, 1.0f, 1.0f, "", Taper::Linear});
     registry.registerModule("amp.nam", "amp", std::move(specs),
                             [] { return std::make_unique<NamAmpModule>(); });
 }

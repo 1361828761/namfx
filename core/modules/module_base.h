@@ -34,6 +34,13 @@ public:
         (void)path;
         return false;
     }
+
+    // control-thread hook invoked by Chain::prepare after parameter values
+    // are pushed into the module; used for options that must not change
+    // from the audio callback (e.g. NAM A2 tier switching)
+    virtual void applyAssetOptions()
+    {
+    }
 };
 
 } // namespace namfx

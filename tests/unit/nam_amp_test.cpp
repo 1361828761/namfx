@@ -71,14 +71,14 @@ double binAmplitude(const std::vector<float>& y, double rate, double freq)
 
 } // namespace
 
-TEST_CASE("nam amp registers as amp category with five tone params")
+TEST_CASE("nam amp registers as amp category with six params")
 {
     namfx::ModuleRegistry registry;
     namfx::registerNamAmp(registry);
     REQUIRE(registry.has("amp.nam"));
     REQUIRE(registry.categoryOf("amp.nam") == "amp");
-    REQUIRE(registry.specsFor("amp.nam").size() == 5);
-    for (const char* p : {"gain", "bass", "middle", "treble", "output"}) {
+    REQUIRE(registry.specsFor("amp.nam").size() == 6);
+    for (const char* p : {"gain", "bass", "middle", "treble", "output", "tier"}) {
         REQUIRE(registry.findParam("amp.nam", p) != nullptr);
     }
 }
@@ -277,6 +277,97 @@ TEST_CASE("nam amp loads through the chain with a preset file field")
         peak = std::max(peak, std::fabs(out[i]));
     }
     REQUIRE(peak > 1e-3f);
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("nam amp switches A2 tier between Lite and Full")
+{
+    // slimmable models (A2 container + slimmable wavenet) expose a tier
+    // control-thread switch; Lite (0) and Full (1) must both render finite
+    // audio and produce different outputs for the same input
+    namfx::ModuleRegistry registry;
+    namfx::registerNamAmp(registry);
+    for (const char* file : {"A2.nam", "slimmable_wavenet.nam"}) {
+        auto mod = makeModule(registry, asset(file).string());
+        auto* nam = dynamic_cast<namfx::NamAmpModule*>(mod.get());
+        REQUIRE(nam != nullptr);
+        mod->prepare(48000.0, 64);
+        const std::vector<float> in = makeSine(9600, 220.0f, 0.1f, 48000.0);
+
+        mod->setParameter("tier", 0.0f);
+        nam->applyTier();
+        std::vector<float> outLite(in.size(), 0.0f);
+        processChunks(*mod, in, outLite);
+        float peakLite = 0.0f;
+        for (std::size_t i = 4096; i < outLite.size(); ++i) {
+            peakLite = std::max(peakLite, std::fabs(outLite[i]));
+            REQUIRE(std::isfinite(outLite[i]));
+        }
+        REQUIRE(peakLite > 1e-3f);
+
+        mod->setParameter("tier", 1.0f);
+        nam->applyTier();
+        std::vector<float> outFull(in.size(), 0.0f);
+        processChunks(*mod, in, outFull);
+        float peakFull = 0.0f;
+        for (std::size_t i = 4096; i < outFull.size(); ++i) {
+            peakFull = std::max(peakFull, std::fabs(outFull[i]));
+            REQUIRE(std::isfinite(outFull[i]));
+        }
+        REQUIRE(peakFull > 1e-3f);
+
+        // tiers must actually differ (different submodel/slice active)
+        double diff = 0.0;
+        for (std::size_t i = 4096; i < outLite.size(); ++i) {
+            diff += std::fabs(static_cast<double>(outLite[i]) - outFull[i]);
+        }
+        REQUIRE(diff > 1e-3);
+    }
+}
+
+TEST_CASE("nam amp tier from a preset takes effect through the chain")
+{
+    // the `tier` param in a preset must reach the module on load via
+    // Chain::prepare -> applyAssetOptions (control thread)
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "namfx_nam_tier";
+    std::filesystem::create_directories(dir);
+    std::filesystem::copy_file(asset("A2.nam"), dir / "A2.nam",
+                               std::filesystem::copy_options::overwrite_existing);
+    auto render = [&](float tier) {
+        const std::string presetText = R"({
+            "schema": 1,
+            "name": "NAM Tier",
+            "chain": [{
+                "slot": 0, "category": "amp", "impl": "nam", "module": "amp.nam",
+                "file": "A2.nam", "params": { "gain": 0.5, "tier": )"
+            + std::to_string(tier) + R"( }, "bypass": false, "mix": 1.0
+            }],
+            "scenes": []
+        })";
+        namfx::ModuleRegistry registry;
+        namfx::registerNamAmp(registry);
+        namfx::preset::LoadReport report;
+        const namfx::preset::Preset preset = namfx::preset::loadPreset(
+            presetText, namfx::preset::LoadMode::Strict, registry, report, dir.string());
+        REQUIRE(report.ok());
+        namfx::audio::Chain chain(preset.chain,
+                                  std::make_shared<const namfx::ModuleRegistry>(registry));
+        chain.prepare(48000.0, 64);
+        const std::vector<float> in = makeSine(24000, 130.0f, 0.12f, 48000.0);
+        std::vector<float> out(in.size(), 0.0f);
+        for (std::size_t off = 0; off < in.size(); off += 64) {
+            const int n = static_cast<int>(std::min(static_cast<std::size_t>(64), in.size() - off));
+            chain.process(in.data() + off, in.data() + off, out.data() + off, out.data() + off, n);
+        }
+        return out;
+    };
+    const std::vector<float> lite = render(0.0f);
+    const std::vector<float> full = render(1.0f);
+    double diff = 0.0;
+    for (std::size_t i = 8192; i < lite.size(); ++i) {
+        diff += std::fabs(static_cast<double>(lite[i]) - full[i]);
+    }
+    REQUIRE(diff > 1e-3); // tiers differ through the chain
     std::filesystem::remove_all(dir);
 }
 
