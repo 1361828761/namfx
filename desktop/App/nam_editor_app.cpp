@@ -1242,8 +1242,7 @@ void NAMEditorApplication::buildUi()
 
     addModuleButton_ = std::make_unique<juce::TextButton>("Add");
     addModuleButton_->setBounds(720, 218, 56, 26);
-    addAndMakeVisible(*addModuleButton_);
-    addModuleButton_->onClick = [this] {
+    addAndMakeVisible(*addModuleButton_);    addModuleButton_->onClick = [this] {
         const int idx = addModuleBox_->getSelectedId();
         if (idx <= 0) {
             return;
@@ -1276,6 +1275,31 @@ void NAMEditorApplication::buildUi()
         } else {
             statusLabel_->setText("add failed: " + juce::String(error),
                                   juce::dontSendNotification);
+        }
+    };
+
+    // import a .nam file into the user model library (Documents/namfx/models)
+    importModelButton_ = std::make_unique<juce::TextButton>("Import");
+    importModelButton_->setBounds(784, 218, 72, 26);
+    addAndMakeVisible(*importModelButton_);
+    importModelButton_->onClick = [this] {
+        juce::FileChooser chooser("Import NAM model",
+                                  juce::File::getSpecialLocation(juce::File::userHomeDirectory),
+                                  "*.nam");
+        if (!chooser.browseForFileToOpen()) {
+            return;
+        }
+        const juce::File src = chooser.getResult();
+        juce::File destDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                                 .getChildFile("namfx")
+                                 .getChildFile("models");
+        destDir.createDirectory();
+        if (src.copyFileTo(destDir.getChildFile(src.getFileName()))) {
+            refreshModelLibrary();
+            refreshAssetList();
+            statusLabel_->setText("imported " + src.getFileName(), juce::dontSendNotification);
+        } else {
+            statusLabel_->setText("import failed", juce::dontSendNotification);
         }
     };
 

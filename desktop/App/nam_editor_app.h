@@ -144,6 +144,7 @@ private:
     std::unique_ptr<juce::ComboBox> addModuleBox_;  // module within category
     std::unique_ptr<juce::ComboBox> addAssetBox_;   // NAM model / IR library
     std::unique_ptr<juce::TextButton> addModuleButton_;
+    std::unique_ptr<juce::TextButton> importModelButton_; // copy a .nam into the library
     std::unique_ptr<juce::Viewport> chainPanelViewport_;
     std::unique_ptr<ChainPanelContent> chainPanelContent_;
     // scene panel
