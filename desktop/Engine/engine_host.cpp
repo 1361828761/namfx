@@ -62,7 +62,7 @@ std::string implForModule(const std::string& id)
     if (id == "cab.ir") {
         return "ir";
     }
-    if (id == "nam.amp") {
+    if (id == "amp.nam") {
         return "nam";
     }
     return "dsp";
@@ -246,13 +246,19 @@ std::string EngineHost::chainSummary() const
 
 bool EngineHost::rebuildChain(std::vector<audio::SlotDef> slots, std::string& error)
 {
-    (void)error;
-    auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_);
-    chain->prepare(sampleRate_, blockSize_);
-    chain->startFadeIn(); // the swap eases in: no pop
-    chain_ = chain.get();
-    graph_.requestSwap(std::move(chain));
-    return true;
+    try {
+        auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_);
+        chain->prepare(sampleRate_, blockSize_);
+        chain->startFadeIn(); // the swap eases in: no pop
+        chain_ = chain.get();
+        graph_.requestSwap(std::move(chain));
+        return true;
+    } catch (const std::exception& e) {
+        // asset load / parameter validation can throw (Chain ctor): never
+        // let that escape the UI thread (it crashed the app before)
+        error = e.what();
+        return false;
+    }
 }
 
 bool EngineHost::addModuleToChain(const std::string& moduleId, const std::string& assetFile,
@@ -267,7 +273,7 @@ bool EngineHost::addModuleToChain(const std::string& moduleId, const std::string
         error = "unknown module " + moduleId;
         return false;
     }
-    if ((moduleId == "nam.amp" || moduleId == "cab.ir") && assetFile.empty()) {
+    if ((moduleId == "amp.nam" || moduleId == "cab.ir") && assetFile.empty()) {
         error = "select an asset (model / IR) for " + moduleId;
         return false;
     }

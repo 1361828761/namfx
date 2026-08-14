@@ -85,6 +85,120 @@ juce::String noteName(int midi)
     return juce::String(names[midi % 12]) + juce::String(octave);
 }
 
+// --- NAM model classification -------------------------------------------
+// NAM files carry a JSON header with gear metadata ("gear_type" / "gear_make"
+// / "name"); read the first 64 KB and classify into type (Amp/Cab/Pedal) +
+// brand (Vox/Marshall/...) so the library can be grouped.
+
+juce::String extractJsonString(const juce::String& head, const juce::String& key)
+{
+    const int p = head.indexOf("\"" + key + "\"");
+    if (p < 0) {
+        return {};
+    }
+    const int c = head.indexOf(p + key.length() + 2, ":");
+    if (c < 0) {
+        return {};
+    }
+    const int q1 = head.indexOf(c + 1, "\"");
+    if (q1 < 0) {
+        return {};
+    }
+    const int q2 = head.indexOf(q1 + 1, "\"");
+    if (q2 < 0) {
+        return {};
+    }
+    return head.substring(q1 + 1, q2);
+}
+
+juce::String modelTypeFor(const juce::String& gearType, const juce::String& name)
+{
+    const juce::String t = gearType.toLowerCase();
+    if (t.contains("amp") || t.contains("preamp")) {
+        return "Amp";
+    }
+    if (t.contains("cab")) {
+        return "Cab";
+    }
+    const juce::String n = name.toLowerCase();
+    if (n.contains("cab") || n.contains("ir")) {
+        return "Cab";
+    }
+    if (n.contains("amp") || n.contains("head")) {
+        return "Amp";
+    }
+    return "Pedal";
+}
+
+juce::String modelBrandFor(const juce::String& make, const juce::String& name)
+{
+    const juce::String all = (make + " " + name).toLowerCase();
+    if (all.contains("ac30") || all.contains("vox")) {
+        return "Vox";
+    }
+    if (all.contains("marshall") || all.contains("mars") || all.contains("plexi")
+        || all.contains("jcm") || all.contains("1959")) {
+        return "Marshall";
+    }
+    if (all.contains("fender") || all.contains("deluxe") || all.contains("twin")
+        || all.contains("princeton") || all.contains("reverb")) {
+        return "Fender";
+    }
+    if (all.contains("ocd")) {
+        return "Fulltone";
+    }
+    if (all.contains("centaur") || all.contains("klon")) {
+        return "Klon";
+    }
+    if (all.contains("rat")) {
+        return "ProCo";
+    }
+    if (all.contains("od3") || all.contains("boss")) {
+        return "Boss";
+    }
+    if (all.contains("bno") || all.contains("jt45") || all.contains("jtm")) {
+        return "BNO";
+    }
+    if (all.contains("5150")) {
+        return "EVH";
+    }
+    const juce::String first = make.upToFirstOccurrenceOf(" ", false, false);
+    return first.isNotEmpty() ? first : "Other";
+}
+
+// (type, brand, display name) of a model file; reads the JSON header
+struct ModelClass {
+    juce::String type;
+    juce::String brand;
+    juce::String name;
+};
+
+ModelClass classifyModel(const juce::File& f)
+{
+    ModelClass c;
+    c.name = f.getFileNameWithoutExtension();
+    juce::FileInputStream in(f);
+    if (in.openedOk()) {
+        const auto len = std::min<juce::int64>(65536, in.getTotalLength());
+        juce::MemoryBlock mb;
+        in.readIntoMemoryBlock(mb, static_cast<juce::ssize_t>(len));
+        const juce::String head(mb.toString().substring(0, static_cast<int>(len)));
+        const juce::String gearType = extractJsonString(head, "gear_type");
+        const juce::String gearMake = extractJsonString(head, "gear_make");
+        const juce::String jsonName = extractJsonString(head, "name");
+        if (gearMake.isNotEmpty()) {
+            c.name = jsonName.isNotEmpty() ? jsonName : c.name;
+            c.type = modelTypeFor(gearType, gearMake);
+            c.brand = modelBrandFor(gearMake, jsonName);
+            return c;
+        }
+    }
+    // no metadata: fall back to the filename
+    c.type = modelTypeFor("", c.name);
+    c.brand = modelBrandFor("", c.name);
+    return c;
+}
+
 } // namespace
 
 const char* NAMEditorApplication::kTuningNames[kTuningCount] = {"EADGBE", "Drop D"};
@@ -322,9 +436,17 @@ void NAMEditorApplication::refreshModelLibrary()
             modelFiles_.push_back(f);
         }
     }
-    // stable, human-friendly order
+    // stable, human-friendly order: type -> brand -> name
     std::sort(modelFiles_.begin(), modelFiles_.end(),
               [](const juce::File& a, const juce::File& b) {
+                  const ModelClass ca = classifyModel(a);
+                  const ModelClass cb = classifyModel(b);
+                  if (ca.type != cb.type) {
+                      return ca.type < cb.type;
+                  }
+                  if (ca.brand != cb.brand) {
+                      return ca.brand < cb.brand;
+                  }
                   return a.getFileName().compareNatural(b.getFileName()) < 0;
               });
 }
@@ -337,7 +459,7 @@ void NAMEditorApplication::rebuildAddModuleControls()
         const char* prefix;
     };
     static const Group kGroups[] = {
-        {"Amp (NAM)", "nam."},        {"Cabinet", "cab."},
+        {"Amp (NAM)", "amp."},        {"Cabinet", "cab."},
         {"Distortion", "od."},        {"Compressor", "comp."},
         {"Noise Gate", "gate."},      {"Modulation", "mod."},
         {"Delay", "dly."},            {"Reverb", "rvb."},
@@ -372,7 +494,7 @@ void NAMEditorApplication::refreshModuleList()
         const char* prefix;
     };
     static const Group kGroups[] = {
-        {"Amp (NAM)", "nam."},        {"Cabinet", "cab."},
+        {"Amp (NAM)", "amp."},        {"Cabinet", "cab."},
         {"Distortion", "od."},        {"Compressor", "comp."},
         {"Noise Gate", "gate."},      {"Modulation", "mod."},
         {"Delay", "dly."},            {"Reverb", "rvb."},
@@ -401,13 +523,21 @@ void NAMEditorApplication::refreshAssetList()
 {
     addAssetBox_->clear(juce::dontSendNotification);
     const juce::String sel = addModuleBox_->getText();
-    const bool needsAsset = sel.startsWith("nam.") || sel.startsWith("cab.");
+    const bool needsAsset = sel.startsWith("amp.");
     addAssetBox_->setVisible(needsAsset);
     if (!needsAsset) {
         return;
     }
+    // grouped by type + brand with section headings
+    juce::String currentGroup;
     for (std::size_t i = 0; i < modelFiles_.size(); ++i) {
-        addAssetBox_->addItem(modelFiles_[i].getFileName(), static_cast<int>(i + 1));
+        const ModelClass c = classifyModel(modelFiles_[i]);
+        const juce::String group = c.type + " / " + c.brand;
+        if (group != currentGroup) {
+            currentGroup = group;
+            addAssetBox_->addSectionHeading(group);
+        }
+        addAssetBox_->addItem(c.name, static_cast<int>(i + 1));
     }
     if (addAssetBox_->getNumItems() > 0) {
         addAssetBox_->setSelectedId(1, juce::dontSendNotification);
@@ -728,17 +858,17 @@ void NAMEditorApplication::buildUi()
         }
         std::string moduleId = addModuleBox_->getText().toStdString();
         std::string asset;
-        const bool needsAsset =
-            juce::String(moduleId).startsWith("nam.") || juce::String(moduleId).startsWith("cab.");
-        if (needsAsset) {
+        if (juce::String(moduleId).startsWith("amp.")) {
             const int aidx = addAssetBox_->getSelectedId();
             if (aidx <= 0 || aidx > static_cast<int>(modelFiles_.size())) {
-                statusLabel_->setText("select a model / IR first",
-                                      juce::dontSendNotification);
+                statusLabel_->setText("select a model first", juce::dontSendNotification);
                 return;
             }
             asset = modelFiles_[static_cast<std::size_t>(aidx - 1)].getFullPathName()
                         .toStdString();
+        } else if (juce::String(moduleId).startsWith("cab.")) {
+            // cabinet modules use the bundled demo IR by default
+            asset = demoDir_.getChildFile("irs/cab_clean.wav").getFullPathName().toStdString();
         }
         std::string error;
         if (host_.addModuleToChain(moduleId, asset, error)) {
