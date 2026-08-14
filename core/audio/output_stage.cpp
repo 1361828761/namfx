@@ -54,6 +54,11 @@ void OutputStage::setMasterVolume(float db)
 void OutputStage::setMute(bool mute)
 {
     mute_.store(mute, std::memory_order_relaxed);
+    if (mute) {
+        // silence immediately: without this the very first sample of the
+        // next block still plays at full volume (muteGainSm_ starts at 1)
+        muteGainSm_ = 0.0f;
+    }
 }
 
 void OutputStage::setBass(float v)
