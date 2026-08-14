@@ -44,6 +44,7 @@ juce_add_gui_app(namfx_editor
 
 target_sources(namfx_editor PRIVATE
     App/nam_editor_app.cpp
+    App/tuner_meter.cpp
     Engine/engine_audio_source.cpp
     Engine/engine_host.cpp
 )

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desktop/App/tuner_meter.h"
 #include "desktop/Engine/engine_audio_source.h"
 #include "desktop/Engine/engine_host.h"
 
@@ -80,6 +81,7 @@ private:
     std::unique_ptr<juce::TextButton> applyAudioButton_;
     // tuner panel
     std::unique_ptr<juce::ComboBox> tuningBox_; // EADGBE / Drop D
+    std::unique_ptr<TunerMeter> tunerMeter_;
     std::unique_ptr<juce::Label> tunerLabel_;
     std::unique_ptr<juce::Label> sceneLabel_;
     juce::File demoDir_;

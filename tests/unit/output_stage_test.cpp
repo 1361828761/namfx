@@ -56,8 +56,12 @@ TEST_CASE("output stage applies input gain, master volume and mute")
     OutputStage muteStage;
     muteStage.prepare(48000.0, 64);
     muteStage.setMute(true);
+    // the mute is smoothed on the audio thread (fade over a few ms, no pop);
+    // give the ramp time to settle, then the tail must be silent
     muteStage.process(in.data(), in.data(), out.data(), outR.data(), static_cast<int>(in.size()));
-    REQUIRE(peak(out) == 0.0f);
+    muteStage.process(in.data(), in.data(), out.data(), outR.data(), static_cast<int>(in.size()));
+    const std::vector<float> tail(out.end() - 4800, out.end());
+    REQUIRE(peak(tail) < 1e-6f); // smoothed mute settles below -120 dB
 }
 
 // process in callback-sized chunks (the stage refreshes EQ coefficients

@@ -103,7 +103,7 @@ MainWindow::MainWindow(juce::Component& content)
     opts.folderName = "namfx";
     juce::PropertiesFile props(opts);
     const int w = props.getIntValue("windowW", 1280);
-    const int h = props.getIntValue("windowH", 800);
+    const int h = props.getIntValue("windowH", 720);
     content.setSize(w, h);
     centreWithSize(content.getWidth(), content.getHeight());
     setVisible(true);
@@ -189,8 +189,8 @@ void NAMEditorApplication::updateTunerReadout()
 {
     const dsp::Tuner& tuner = host_.tuner();
     if (!tuner.noteDetected()) {
-        tunerLabel_->setText("调音器 | 无信号（A4=440Hz 基准，弹奏任意弦自动识别）",
-                             juce::dontSendNotification);
+        tunerMeter_->setDeviation(0.0f, false, false);
+        tunerLabel_->setText("无信号（A4=440Hz）", juce::dontSendNotification);
         return;
     }
     // auto-match the string nearest the detected pitch: the player plucks a
@@ -207,19 +207,22 @@ void NAMEditorApplication::updateTunerReadout()
     }
     static const char* kStringNames[6] = {"1弦E4", "2弦B3", "3弦G3", "4弦D3", "5弦A2", "6弦E2"};
     if (bestDist > 2) {
+        tunerMeter_->setDeviation(0.0f, false, false);
         tunerLabel_->setText("检测到 " + noteName(detected) + "（" + juce::String(tuner.frequency(), 1)
                                  + " Hz），不在 " + juce::String(kTuningNames[tuning_])
-                                 + " 调弦的任何弦附近",
+                                 + " 调弦任何弦附近",
                              juce::dontSendNotification);
         return;
     }
     const int target = kTargetNotes[tuning_][best];
     const float dev = static_cast<float>(detected - target) * 100.0f + tuner.cents();
+    const bool inTune = std::fabs(dev) <= 5.0f;
     const juce::String status = (dev > 5.0f) ? "偏高"
                                 : ((dev < -5.0f) ? "偏低" : "准");
+    tunerMeter_->setDeviation(dev, true, inTune);
     tunerLabel_->setText(juce::String(kStringNames[best]) + " 目标 " + noteName(target)
                              + " | 实测 " + juce::String(tuner.frequency(), 1) + " Hz ("
-                             + noteName(detected) + ") | 偏差 " + juce::String(dev, 0) + " ct "
+                             + noteName(detected) + ") | " + juce::String(dev, 0) + " ct "
                              + status,
                          juce::dontSendNotification);
 }
@@ -327,7 +330,11 @@ void NAMEditorApplication::applyAudioSetup()
     setup.sampleRate = static_cast<double>(sampleRateBox_->getSelectedId());
     setup.bufferSize = bufferSizeBox_->getSelectedId();
     deviceManager_.setCurrentAudioDeviceType(typeName, false);
+    // mute through the device restart so switching never pops; the mute is
+    // smoothed on the audio thread (fade in/out over a few ms)
+    host_.output().setMute(true);
     const juce::String err = deviceManager_.setAudioDeviceSetup(setup, true);
+    host_.output().setMute(false);
     if (err.isNotEmpty()) {
         statusLabel_->setText("audio setup error: " + err, juce::dontSendNotification);
         return;
@@ -346,7 +353,7 @@ void NAMEditorApplication::applyAudioSetup()
 
 void NAMEditorApplication::buildUi()
 {
-    setSize(1280, 800);
+    setSize(1280, 720);
     presetBox_ = std::make_unique<juce::ComboBox>();
     presetBox_->setBounds(16, 16, 360, 28);
     addAndMakeVisible(*presetBox_);
@@ -370,7 +377,10 @@ void NAMEditorApplication::buildUi()
         const juce::OwnedArray<juce::AudioIODeviceType>& types =
             deviceManager_.getAvailableDeviceTypes();
         if (typeIdx > 0 && typeIdx <= types.size()) {
+            // mute through the device restart so the mode switch never pops
+            host_.output().setMute(true);
             deviceManager_.setCurrentAudioDeviceType(types[typeIdx - 1]->getTypeName(), false);
+            host_.output().setMute(false);
             refreshAudioDeviceControls();
         }
     };
@@ -392,7 +402,7 @@ void NAMEditorApplication::buildUi()
     addAndMakeVisible(*applyAudioButton_);
     applyAudioButton_->onClick = [this] { applyAudioSetup(); };
 
-    // tuner panel: tuning selection + auto-matched string readout
+    // tuner panel: tuning selection + graphical deviation meter
     tuningBox_ = std::make_unique<juce::ComboBox>();
     tuningBox_->setBounds(16, 116, 120, 26);
     addAndMakeVisible(*tuningBox_);
@@ -406,8 +416,12 @@ void NAMEditorApplication::buildUi()
         }
     };
 
+    tunerMeter_ = std::make_unique<TunerMeter>();
+    tunerMeter_->setBounds(144, 112, 480, 34);
+    addAndMakeVisible(*tunerMeter_);
+
     tunerLabel_ = std::make_unique<juce::Label>();
-    tunerLabel_->setBounds(144, 116, 1100, 24);
+    tunerLabel_->setBounds(636, 116, 620, 24);
     addAndMakeVisible(*tunerLabel_);
 
     sceneLabel_ = std::make_unique<juce::Label>();
@@ -420,7 +434,7 @@ void NAMEditorApplication::buildUi()
     chainLabel_->setMultiLine(true);
     chainLabel_->setReadOnly(true);
     chainLabel_->setScrollbarsShown(true);
-    chainLabel_->setBounds(16, 176, 1240, 600);
+    chainLabel_->setBounds(16, 176, 1240, 520);
     addAndMakeVisible(*chainLabel_);
     chainLabel_->setText("(no preset loaded)", juce::dontSendNotification);
 }

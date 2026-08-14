@@ -53,7 +53,7 @@ void OutputStage::setMasterVolume(float db)
 
 void OutputStage::setMute(bool mute)
 {
-    mute_ = mute;
+    mute_.store(mute, std::memory_order_relaxed);
 }
 
 void OutputStage::setBass(float v)
@@ -125,12 +125,14 @@ void OutputStage::updateEqCoeffs()
 void OutputStage::process(const float* inL, const float* inR, float* outL, float* outR, int n)
 {
     updateEqCoeffs(); // per block; continuous in the smoothed params
+    const float muteTarget = mute_.load(std::memory_order_relaxed) ? 0.0f : 1.0f;
     for (int i = 0; i < n; ++i) {
         inputGainSm_ += smoothK_ * (inputGain_ - inputGainSm_);
         masterSm_ += smoothK_ * (master_ - masterSm_);
         bassSm_ += smoothK_ * (bass_ - bassSm_);
         middleSm_ += smoothK_ * (middle_ - middleSm_);
         trebleSm_ += smoothK_ * (treble_ - trebleSm_);
+        muteGainSm_ += smoothK_ * (muteTarget - muteGainSm_);
 
         const float inGain = std::pow(10.0f, inputGainSm_ / 20.0f);
         const float masterLin = std::pow(10.0f, masterSm_ / 20.0f);
@@ -142,7 +144,7 @@ void OutputStage::process(const float* inL, const float* inR, float* outL, float
         mid_.run(v, shaped);
         v = shaped;
         low_.run(v, shaped);
-        outL[i] = mute_ ? 0.0f : shaped * masterLin;
+        outL[i] = shaped * masterLin * muteGainSm_;
 
         float vr = inR[i] * inGain;
         float shapedR = vr;
@@ -151,7 +153,7 @@ void OutputStage::process(const float* inL, const float* inR, float* outL, float
         midR_.run(vr, shapedR);
         vr = shapedR;
         lowR_.run(vr, shapedR);
-        outR[i] = mute_ ? 0.0f : shapedR * masterLin;
+        outR[i] = shapedR * masterLin * muteGainSm_;
     }
 }
 

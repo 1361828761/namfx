@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 
@@ -52,7 +53,8 @@ private:
     float inputGainSm_ = 0.0f;
     float master_ = 0.0f;
     float masterSm_ = 0.0f;
-    bool mute_ = false;
+    std::atomic<bool> mute_{false};
+    float muteGainSm_ = 1.0f; // smoothed mute gain (no pop on mute toggles)
     float bass_ = 0.5f;
     float bassSm_ = 0.5f;
     float middle_ = 0.5f;
