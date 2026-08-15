@@ -103,6 +103,7 @@ void EngineHost::prepare(double sampleRate, int blockSize)
     blockSize_ = blockSize;
     output_.prepare(sampleRate, blockSize);
     tuner_.prepare(sampleRate);
+    router_.setSampleRate(sampleRate); // hang-time scales with the device rate
     {
         // device reconfiguration (block size / sample rate change): the
         // live chain must follow, or Chain::process asserts on n > maxBlock
@@ -137,7 +138,17 @@ void EngineHost::process(const float* inL, const float* inR, float* outL, float*
     for (int off = 0; off < n; off += step) {
         const int count = std::min(step, n - off);
         graph_.processBlock(inL + off, inR + off, outL + off, outR + off, count);
-        output_.process(outL + off, outR + off, outL + off, outR + off, count);
+        // Block boundary: apply queued scene recalls (priority 1) and UI /
+        // control-source writes (priority 2) to the LIVE chain. Runs after
+        // processBlock so a swap landing in this block already targeted the
+        // new chain -- the application itself only takes effect from the
+        // next block (params ramp, bypass fades), which is the documented
+        // scene/control-source contract.
+        audio::Chain* live = graph_.live();
+        if (live != nullptr) {
+            scenes_.apply(*live);
+            router_.apply(*live, count);
+        }        output_.process(outL + off, outR + off, outL + off, outR + off, count);
         tuner_.process(inL + off, count);
         for (int i = 0; i < count; ++i) {
             const float a = std::fabs(inL[off + i]);

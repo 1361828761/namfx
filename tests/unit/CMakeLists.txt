@@ -42,6 +42,8 @@ add_executable(namfx_tests
     export_import_test.cpp
     output_stage_test.cpp
     tuner_test.cpp
+    engine_host_test.cpp
+    ${PROJECT_SOURCE_DIR}/desktop/Engine/engine_host.cpp
 )
 
 file(COPY ${PROJECT_SOURCE_DIR}/core/preset/demo/ DESTINATION ${CMAKE_BINARY_DIR}/demo-presets)
@@ -54,6 +56,7 @@ file(TO_CMAKE_PATH "${CMAKE_BINARY_DIR}/test-assets" NAMFX_TEST_ASSETS_DIR_CMAKE
 target_compile_definitions(namfx_tests PRIVATE NAMFX_TEST_ASSETS_DIR="${NAMFX_TEST_ASSETS_DIR_CMAKE}")
 
 target_link_options(namfx_tests PRIVATE "/MAP:namfx_tests.map")
+target_include_directories(namfx_tests PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(namfx_tests PRIVATE
     namfx_core
     nam_core

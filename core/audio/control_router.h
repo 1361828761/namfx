@@ -59,6 +59,10 @@ public:
     // ---- audio thread (block boundary, after SceneEngine::apply) --------
     void apply(Chain& chain, int frames);
 
+    // control thread: keep the hang-time (samples) consistent with the
+    // current device sample rate
+    void setSampleRate(double sampleRate) { sampleRate_ = sampleRate; }
+
 private:
     struct Binding {
         int sourceId = -1;

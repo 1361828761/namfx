@@ -57,5 +57,10 @@ const Chain* AudioGraph::current() const
     return slots_[current_.load(std::memory_order_acquire)].get();
 }
 
+Chain* AudioGraph::live() const
+{
+    return slots_[current_.load(std::memory_order_acquire)].get();
+}
+
 } // namespace audio
 } // namespace namfx

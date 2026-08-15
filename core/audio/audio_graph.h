@@ -29,6 +29,11 @@ public:
     // after requestSwap
     const Chain* current() const;
 
+    // audio-thread read of the live chain, after processBlock() has landed
+    // any pending swap for this block (null when none loaded): the chain
+    // the scene engine / control router apply to at the block boundary
+    Chain* live() const;
+
 private:
     std::shared_ptr<const ModuleRegistry> registry_;
     std::atomic<Chain*> pending_{nullptr};

@@ -118,27 +118,38 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
   - 项目已设 `UPDATE_DISCONNECTED TRUE`；CI（GitHub Actions）网络正常不受影响
 - **WaveDigitalFilters 集成方式**：header-only INTERFACE target（跳过其 CMakeLists 的 JUCE 示例），固定 commit `f3917749`，仅 `core/modules/dsp/` 电路建模路径可用（红线 2 豁免 #111）
 
-## 8. 里程碑总览（当前 = M2 DSP 库进行中）
+## 8. 里程碑总览（当前 = M5 软件端完成，下一步 M6 插件 / M7 嵌入式）
 
 | 里程碑 | 内容 | 验证 | 预估 |
 |---|---|---|---|
 | **M0（已完成）** | 骨架：git + monorepo + CMake + CI + 实时安全框架 + RK3308 ev 板采购 + UAC2 spike 启动 + 生态调研 | 音频直通无爆音；回调分配计数器生效 | 2-3 周 |
 | M1 | 音色链核心 + 预设存取（nlohmann 豁免）+ 迁移 + 备份 + **RK3308 Linux aarch64 交叉编译（原样编译）** + UAC2 spike ≥8h | **全 DSP 演示链出声**（NAM+IR 出声验收移 M4）；**软件部分 ✅ 已完成，硬件验收项 ⏳ 待板** | 3.5-4.5 周 |
-| **M2（进行中）** | DSP 库（**名单块复刻 #110** + 音高家族单音） | 单元+回归+参数扫描 | 8-12 周 |
-| M3 | IR 引擎（UPOLS + 重采样） | 误差 < -100dB | 2-3 周 |
-| M4 | NAM 集成 + A2 bake-off（定主力芯片） | .nam 出声；双端一致 | 3-4 周 |
-| M5a/b/c | 桌面编辑器（+导出/导入+30+ 演示预设）/ 场景+输出 / 调音器+MIDI+WASAPI+演出基础 | <5ms（64 样本档）；场景无爆音 | 10-15 周 |
+| M2 ✅（已完成） | DSP 库（名单块复刻 #110：14 模块 + 音高家族移调/八度；剩 whammy/和声器） | 单元+回归+参数扫描全绿 | 8-12 周 |
+| M3 ✅（已完成） | IR 引擎（UPOLS + 重采样 + 最小相位 + 低切高切） | 误差 < 1e-4 | 2-3 周 |
+| M4 ✅ 软件部分 | NAM 集成（amp.nam + 96k 重采样 + tier 切换）+ A2 bake-off（⏳ 待板定主力芯片） | .nam 出声；26 真实模型批量验证 | 3-4 周 |
+| M5a/b/c ✅（软件端核心闭环） | 桌面编辑器（JUCE：链编辑/预设/模型库/场景/MIDI 学习/输出面板/调音器/WASAPI+ASIO/打包）；遗留项见 PLAN §13（性能仪表/A-B-undo/快捷键/断链修复/30+ 演示预设/锁定视图/断连恢复） | 305 单测 + 集成测试全绿；参数/场景/MIDI 经 block 边界消费（EngineHost 集成测试） | 10-15 周 |
 | M6 | VST3/AU 插件 | DAW 可加载 | 2-3 周 |
 | M7a/b/c | 嵌入式核心(v1 承诺) / I/O 扩展 / 连接升级 | 5ms + 24h soak | 13-18 周 |
 | M8 | H7 低端档研究 | DSP+IR 跑通 | 研究性 |
 
 砍序（超预算时）：M8 → M7c OTA → M7b → M5c 部分。
 
-## 9. 当前任务：M2 DSP 库（进行中）
+## 9. 当前任务：M5 完成，下一轮候选（按优先级）
 
-> 开工顺序：读本文档 §3-§7（环境/红线/坑）→ 读 `docs/research/<模块>.md`（电路/算法事实）→ 按下方流程实现。
-> 每块流程 = 调研文档 → 模块+注册 → 测试（注册/行为/参数扫描/44.1+96k/rt_alloc）→ 演示预设 → debug+release ctest 全绿。
-> 动态状态源：`HANDOFF.md`（工作区待 commit 清单、验证基线、坑清单）。
+> 状态源：`HANDOFF.md`（工作区待 commit 清单、验证基线、坑清单）。M5 软件端已闭环并全绿；
+> 用户方向：嵌入式（M6 插件 / M7）暂缓，先把软件端功能做好跑通。
+
+### M5 验收后遗留（按优先级）
+1. **预设导出/导入 UI 入口**（core 层 exportPreset/importPreset 已完成 + 5 用例，桌面 UI 未接按钮）
+2. **A/B 对比 + undo/redo**（壳侧概念，计划 M5a 含；UI 未做）
+3. **性能仪表 G11**（底部 CPU/剩余性能三段式；xrun 计数已有雏形可扩展）
+4. **30+ 演示预设内容任务**（D22；现 demo 已有 24 个全 DSP + NAM 混排预设）
+5. **快捷键总表**（§10：1/2 A/B、Ctrl+1..8 场景、T 调音器、Ctrl+Z/Y、M 静音）
+6. **拖拽到槽位三入口**（库抽屉拖入/文件直接拖入，现只有链内重排）
+7. **设备断连自动重连 + 回退共享模式**（#88/#107 闭合项，UI 未做）
+8. **演出锁定视图**（大号预设/场景名，隐藏编辑 chrome）
+9. whammy（控制源已就绪）+ 和声器（需 YIN 检测）
+10. M6 VST3/AU 插件（宿主延迟报告 + chunk=完整预设 JSON 走迁移链）
 
 ### M2-1 TS808 风格过载（✅ 已完成，commit 1f028bb）
 - [x] `core/modules/dsp/wdf/` 封装 WaveDigitalFilters（已接入，仅此路径可用，红线 2 豁免 #111）
@@ -148,13 +159,12 @@ CI 要求（从 M0 起）：Windows + Linux 双平台构建、跑全部单元测
 - [x] 演示预设 `core/preset/demo/ts_drive.json`
 - [x] 验证：debug+release ctest 全绿 → CI 4 job 全绿
 
-### M2-2 名单块复刻（进行中，每块同法，见 PLAN §6 映射表）
-**已完成并提交（4 模块）**：Klon 风格 ✅ `od.transparent` / OCD 风格 ✅ `od.mosfet` / Dyna Comp 风格 ✅ `comp.ota`（+ TS808 上会话提交）
-**已完成待 commit（10 模块，工作区）**：调制族 ✅ `mod.chorus`（CE-2 风格）/ `mod.flanger`（BF-2 风格，以 Electric Mistress 为建模基准）/ `mod.phaser`（Phase 90 风格）/ `mod.wah`（Crybaby 风格，position 为控制源钩子）；门限 ✅ `gate.ns2`；EQ ✅ `eq.ge7`；延迟族 ✅ `dly.dm2` / `dly.tape`（Echoplex 风格）；混响 ✅ `rvb.spring`（弹簧物理）；音高家族 ✅ `pitch.shift`（移调核心 v1，固定比率延迟线+交叉淡化）
-**剩余**：音高家族（八度 → whammy（依赖 M5 控制源）→ 和声器（需 YIN 检测，见 `docs/research/pitch.md`））+ Hall 混响（可后置）
+### M2-2 名单块复刻（✅ 全部完成并提交，每块同法，见 PLAN §6 映射表）
+**已完成并提交（14 模块）**：Klon 风格 ✅ `od.transparent` / OCD 风格 ✅ `od.mosfet` / Dyna Comp 风格 ✅ `comp.ota` / TS808 ✅ `od.ts808`；调制族 ✅ `mod.chorus`（CE-2 风格）/ `mod.flanger`（BF-2 风格，以 Electric Mistress 为建模基准）/ `mod.phaser`（Phase 90 风格）/ `mod.wah`（Crybaby 风格，position 为控制源钩子）；门限 ✅ `gate.ns2`；EQ ✅ `eq.ge7`；延迟族 ✅ `dly.dm2` / `dly.tape`（Echoplex 风格）；混响 ✅ `rvb.spring`（弹簧物理）+ `rvb.hall`；音高家族 ✅ `pitch.shift`（移调核心 v1）+ `pitch.octave`（八度）
+**剩余**：whammy（依赖 M5 控制源，已就绪，列入下一轮）+ 和声器（需 YIN 检测，见 `docs/research/pitch.md`）
 
 ### M2 验收
-单元+回归+参数空间扫描通过；移调核心可演出级（v1 已交付，验收口径待用户确认）；每块模块 ID 全局唯一 + 预设逐槽校验。
+单元+回归+参数空间扫描通过（已全绿）；移调核心可演出级（v1 已交付，验收口径待用户确认）；每块模块 ID 全局唯一 + 预设逐槽校验。
 
 ---
 
