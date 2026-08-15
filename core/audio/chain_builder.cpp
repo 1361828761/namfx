@@ -26,6 +26,8 @@ std::vector<SlotDef> snapshotChain(const Chain& chain)
         for (std::size_t p = 0; p < specs.size(); ++p) {
             def.params.push_back(ParamInit{specs[p].id, chain.paramValue(i, p)});
         }
+        // the effective mix (UI override or preset value) is kept as well
+        def.mix = chain.mixValueOf(i);
         out.push_back(std::move(def));
     }
     return out;

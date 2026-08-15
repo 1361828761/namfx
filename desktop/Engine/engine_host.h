@@ -58,6 +58,7 @@ public:
     // the next block); slot is the chain slot index
     bool uiSetParam(int slot, const std::string& paramId, float value);
     bool uiSetBypass(int slot, bool bypass);
+    bool uiSetMix(int slot, float mix); // -1 resets to the preset mix
 
     // UI readouts
     // smoothed input/output levels (0..1 peak, audio-thread maintained)
@@ -87,7 +88,7 @@ public:
         std::string moduleId;
         std::string assetName; // loaded model/IR file basename (" when none)
         bool bypass = false;
-        float mix = 1.0f;
+        float mix = 1.0f; // effective mix (UI override or preset)
         std::vector<ParamSpec> specs;
         std::vector<float> values;
     };

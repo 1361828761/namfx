@@ -266,6 +266,19 @@ bool EngineHost::uiSetParam(int slot, const std::string& paramId, float value)
     return router_.uiSet(moduleId, paramId, value);
 }
 
+bool EngineHost::uiSetMix(int slot, float mix)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        return false;
+    }
+    try {
+        chain_->setMixByIndex(slot, mix);
+    } catch (const std::out_of_range&) {
+        return false;
+    }
+    return true;
+}
 bool EngineHost::uiSetBypass(int slot, bool bypass)
 {
     std::lock_guard<std::mutex> lock(chainMutex_);
@@ -496,7 +509,7 @@ std::vector<EngineHost::SlotInfo> EngineHost::chainInfo() const
             const std::size_t dot = base.find_last_of('.');
             info.assetName = dot == std::string::npos ? base : base.substr(0, dot);
             info.bypass = def.bypass;
-            info.mix = def.mix;
+            info.mix = chain_->mixValueOf(i);
             info.specs = chain_->specsOf(i);
             for (std::size_t p = 0; p < info.specs.size(); ++p) {
                 info.values.push_back(chain_->paramValue(i, p));

@@ -274,6 +274,14 @@ void NAMEditorApplication::initialise(const juce::String&)
     midiBindFile_ = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
                         .getChildFile("namfx")
                         .getChildFile("midi_binds.txt");
+    settingsFile_ = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                        .getChildFile("namfx")
+                        .getChildFile("settings.txt");
+    // rotate an oversized crash log
+    juce::File crashLogFile(juce::File::getCurrentWorkingDirectory().getChildFile("namfx_crash.log"));
+    if (crashLogFile.getSize() > 1024 * 1024) {
+        crashLogFile.deleteFile();
+    }
     engineSource_ = std::make_unique<EngineAudioSource>(host_);
     player_.setSource(engineSource_.get());
     // start muted: opening the device can pop (interface power-up noise);
@@ -294,6 +302,7 @@ void NAMEditorApplication::initialise(const juce::String&)
         deviceManager_.addMidiInputDeviceCallback(dev.identifier, midiCallback_.get());
     }
     buildUi();
+    loadSettings(); // restore output panel values (sliders now exist)
     mainWindow_ = std::make_unique<MainWindow>(*this);
     refreshAudioDeviceControls();
     // diagnostics: which device types JUCE enumerated (ASIO present?)
@@ -926,6 +935,50 @@ void NAMEditorApplication::loadMidiBinds()
     midiBindLabel_->setText(bindingSummary(), juce::dontSendNotification);
 }
 
+void NAMEditorApplication::loadSettings()
+{
+    if (!settingsFile_.existsAsFile()) {
+        return;
+    }
+    juce::FileInputStream in(settingsFile_);
+    if (!in.openedOk()) {
+        return;
+    }
+    while (!in.isExhausted()) {
+        const juce::String line = in.readNextLine().trim();
+        if (line.isEmpty() || line.startsWithChar('#')) {
+            continue;
+        }
+        const int eq = line.indexOfChar('=');
+        if (eq <= 0) {
+            continue;
+        }
+        const juce::String key = line.substring(0, eq).trim();
+        const double val = line.substring(eq + 1).trim().getDoubleValue();
+        if (key == "master") { masterSlider_->setValue(val, juce::sendNotification); }
+        else if (key == "ingain") { inputGainSlider_->setValue(val, juce::sendNotification); }
+        else if (key == "bass") { bassSlider_->setValue(val, juce::sendNotification); }
+        else if (key == "mid") { midSlider_->setValue(val, juce::sendNotification); }
+        else if (key == "treble") { trebleSlider_->setValue(val, juce::sendNotification); }
+        else if (key == "mute") { muteToggle_->setToggleState(val > 0.5, juce::sendNotification); }
+    }
+}
+
+void NAMEditorApplication::saveSettings()
+{
+    settingsFile_.getParentDirectory().createDirectory();
+    juce::FileOutputStream out(settingsFile_);
+    if (!out.openedOk()) {
+        return;
+    }
+    out << juce::String("master=") << juce::String(masterSlider_->getValue(), 2) << juce::String("\n");
+    out << juce::String("ingain=") << juce::String(inputGainSlider_->getValue(), 2) << juce::String("\n");
+    out << juce::String("bass=") << juce::String(bassSlider_->getValue(), 3) << juce::String("\n");
+    out << juce::String("mid=") << juce::String(midSlider_->getValue(), 3) << juce::String("\n");
+    out << juce::String("treble=") << juce::String(trebleSlider_->getValue(), 3) << juce::String("\n");
+    out << juce::String("mute=") << (muteToggle_->getToggleState() ? juce::String("1") : juce::String("0")) << juce::String("\n");
+    out.flush();
+}
 void NAMEditorApplication::clearMidiBinds()
 {
     for (const MidiBind& b : midiBinds_) {
@@ -1017,6 +1070,21 @@ void NAMEditorApplication::rebuildChainPanel()
             host_.uiSetBypass(slot, bp->getToggleState());
         };
 
+        auto* ml = new juce::Label();
+        ml->setText("Mix", juce::dontSendNotification);
+        ml->setBounds(344, y, 30, 20);
+        chainPanelContent_->addAndMakeVisible(ml);
+
+        auto* mixSl = new juce::Slider(juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
+        mixSl->setRange(0.0, 1.0, 0.01);
+        mixSl->setValue(info.mix, juce::dontSendNotification);
+        mixSl->setDoubleClickReturnValue(true, 1.0); // double-click: full wet
+        mixSl->setBounds(378, y, 80, 18);
+        chainPanelContent_->addAndMakeVisible(mixSl);
+        mixSl->onValueChange = [this, mixSl, slot = info.slot] {
+            host_.uiSetMix(slot, static_cast<float>(mixSl->getValue()));
+        };
+
         int py = y + 22;
         for (std::size_t p = 0; p < info.specs.size(); ++p) {
             auto* pl = new juce::Label();
@@ -1048,6 +1116,7 @@ void NAMEditorApplication::rebuildChainPanel()
 
             const int slot = info.slot;
             const std::string paramId = info.specs[p].id;
+            sl->setDoubleClickReturnValue(true, info.specs[p].defaultValue); // reset to default
             sl->onValueChange = [this, sl, vl, slot, paramId] {
                 host_.uiSetParam(slot, paramId, static_cast<float>(sl->getValue()));
                 vl->setText(juce::String(sl->getValue(), 2), juce::dontSendNotification);
@@ -1392,12 +1461,13 @@ void NAMEditorApplication::buildUi()
 #else
         return;
 #endif
+        const bool isIr = src.getFileExtension().equalsIgnoreCase(".wav");
         juce::File destDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
                                  .getChildFile("namfx")
-                                 .getChildFile("models");
+                                 .getChildFile(isIr ? "irs" : "models");
         destDir.createDirectory();
         if (src.copyFileTo(destDir.getChildFile(src.getFileName()))) {
-            refreshModelLibrary();
+            refreshModelLibrary(); // scans models + IRs
             refreshAssetList();
             statusLabel_->setText("imported " + src.getFileName(), juce::dontSendNotification);
         } else {
@@ -1487,30 +1557,35 @@ void NAMEditorApplication::buildUi()
     makeSlider(masterSlider_, 70, -60.0, 0.0, 0.0);
     masterSlider_->onValueChange = [this] {
         host_.output().setMasterVolume(static_cast<float>(masterSlider_->getValue()));
+        saveSettings();
     };
 
     makeOutLabel("InGain", 210);
     makeSlider(inputGainSlider_, 272, -60.0, 24.0, 0.0);
     inputGainSlider_->onValueChange = [this] {
         host_.output().setInputGain(static_cast<float>(inputGainSlider_->getValue()));
+        saveSettings();
     };
 
     makeOutLabel("Bass", 412);
     makeSlider(bassSlider_, 460, 0.0, 1.0, 0.5);
     bassSlider_->onValueChange = [this] {
         host_.output().setBass(static_cast<float>(bassSlider_->getValue()));
+        saveSettings();
     };
 
     makeOutLabel("Mid", 600);
     makeSlider(midSlider_, 648, 0.0, 1.0, 0.5);
     midSlider_->onValueChange = [this] {
         host_.output().setMiddle(static_cast<float>(midSlider_->getValue()));
+        saveSettings();
     };
 
     makeOutLabel("Treble", 788);
     makeSlider(trebleSlider_, 836, 0.0, 1.0, 0.5);
     trebleSlider_->onValueChange = [this] {
         host_.output().setTreble(static_cast<float>(trebleSlider_->getValue()));
+        saveSettings();
     };
 
     muteToggle_ = std::make_unique<juce::ToggleButton>("Mute");
@@ -1518,6 +1593,7 @@ void NAMEditorApplication::buildUi()
     addAndMakeVisible(*muteToggle_);
     muteToggle_->onClick = [this] {
         host_.output().setMute(muteToggle_->getToggleState());
+        saveSettings();
     };
 
     levelInLabel_ = std::make_unique<juce::Label>();

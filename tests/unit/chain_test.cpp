@@ -439,6 +439,29 @@ TEST_CASE("reorderChain moves a slot to the requested position")
     REQUIRE_FALSE(ok);
 }
 
+TEST_CASE("setMixByIndex overrides the preset mix atomically")
+{
+    auto registry = testx::makeRegistry();
+    namfx::audio::Chain chain(gainSlot(0, 6.0f), registry);
+    chain.prepare(48000.0, 256);
+    REQUIRE(chain.mixValueOf(0) == Catch::Approx(1.0f)); // preset mix
+
+    chain.setMixByIndex(0, 0.5f);
+    REQUIRE(chain.mixValueOf(0) == Catch::Approx(0.5f));
+    // half-wet: output sits between dry and wet
+    constexpr int n = 256;
+    std::vector<float> in(static_cast<std::size_t>(n), 0.1f);
+    std::vector<float> outL(static_cast<std::size_t>(n));
+    std::vector<float> outR(static_cast<std::size_t>(n));
+    chain.process(in.data(), in.data(), outL.data(), outR.data(), n);
+    // wet = 0.1 * 1.995 (6 dB), dry = 0.1, mix 0.5 -> 0.1 + (0.1995-0.1)*0.5
+    REQUIRE(std::fabs(outL[n - 1] - 0.14975f) < 1e-3f);
+
+    // reset to preset mix
+    chain.setMixByIndex(0, -1.0f);
+    REQUIRE(chain.mixValueOf(0) == Catch::Approx(1.0f));
+    REQUIRE_THROWS_AS(chain.mixValueOf(9), std::out_of_range);
+}
 TEST_CASE("reset restores a chain to its initial state")
 {
     auto registry = testx::makeRegistry();

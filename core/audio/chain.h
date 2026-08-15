@@ -3,6 +3,7 @@
 #include "audio/slot.h"
 #include "modules/param_spec.h"
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -13,6 +14,25 @@ class ModuleRegistry;
 class ParamStore;
 
 namespace audio {
+
+// std::atomic is not copy/move constructible; this wrapper keeps the
+// per-slot mix override movable so SlotRuntime stays vector-friendly
+struct AtomicMix {
+    std::atomic<float> v{-1.0f};
+    AtomicMix() = default;
+    AtomicMix(const AtomicMix& o) : v(o.v.load(std::memory_order_relaxed)) {}
+    AtomicMix& operator=(const AtomicMix& o)
+    {
+        v.store(o.v.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        return *this;
+    }
+    AtomicMix(AtomicMix&& o) noexcept : v(o.v.load(std::memory_order_relaxed)) {}
+    AtomicMix& operator=(AtomicMix&& o) noexcept
+    {
+        v.store(o.v.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        return *this;
+    }
+};
 
 class Chain {
 public:
@@ -57,6 +77,11 @@ public:
     void setParamByIndex(int slotIndex, std::size_t paramIndex, float value);
     void setBypassByIndex(int slotIndex, bool bypass);
 
+    // UI mix control: atomic per-slot wet/dry override (any thread); the
+    // audio thread reads it every block. -1 means "use the preset mix".
+    void setMixByIndex(int slotIndex, float mix);
+    float mixValueOf(int slotIndex) const; // current effective mix (0..1)
+
     static constexpr int kMinSlots = 8;
 
 private:
@@ -73,6 +98,7 @@ private:
         float fadeTarget = 1.0f;
         float fadeStep = 0.0f;
         int fadeRemaining = 0;
+        AtomicMix mixVal; // -1 = use def.mix
     };
 
     int fadeSamples(const std::string& impl) const;

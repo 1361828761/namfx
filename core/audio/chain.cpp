@@ -163,7 +163,9 @@ void Chain::process(const float* inL, const float* inR, float* outL, float* outR
             runtime.module->process(runtime.dryL.data(), runtime.dryR.data(), wetL, wetR, n);
             break;
         }
-        const float mix = runtime.def.mix;
+        // effective mix: UI override (atomic) or the preset value
+        const float override = runtime.mixVal.v.load(std::memory_order_relaxed);
+        const float mix = override >= 0.0f ? override : runtime.def.mix;
         const float fade = runtime.fade;
         if (runtime.fadeRemaining == 0 && fade == 1.0f && mix == 1.0f) {
             std::memcpy(outL, wetL, static_cast<std::size_t>(n) * sizeof(float));
@@ -292,6 +294,28 @@ void Chain::setBypassByIndex(int slotIndex, bool bypass)
             return;
         }
     }
+}
+
+void Chain::setMixByIndex(int slotIndex, float mix)
+{
+    const float clamped = mix < 0.0f ? -1.0f : (mix > 1.0f ? 1.0f : mix);
+    for (SlotRuntime& runtime : slots_) {
+        if (runtime.def.slot == slotIndex) {
+            runtime.mixVal.v.store(clamped, std::memory_order_relaxed);
+            return;
+        }
+    }
+}
+
+float Chain::mixValueOf(int slotIndex) const
+{
+    for (const SlotRuntime& runtime : slots_) {
+        if (runtime.def.slot == slotIndex) {
+            const float override = runtime.mixVal.v.load(std::memory_order_relaxed);
+            return override >= 0.0f ? override : runtime.def.mix;
+        }
+    }
+    throw std::out_of_range("chain: no slot with index " + std::to_string(slotIndex));
 }
 
 } // namespace audio
