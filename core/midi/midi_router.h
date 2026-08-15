@@ -53,6 +53,18 @@ public:
     bool bindScene(int cc, int sceneIndex);
     void clearScene(int cc);
 
+    // persistence support: full snapshot of the current bindings (order is
+    // ccParamCount then ccSceneCount, both ascending by CC)
+    struct BindInfo {
+        enum class Kind { Param, Scene };
+        Kind kind = Kind::Param;
+        int cc = 0;
+        std::string moduleId;
+        std::string paramId;
+        int sceneIndex = 0; // 1-based for Scene binds
+    };
+    std::vector<BindInfo> bindings() const;
+
     // process one incoming event (control thread)
     void handleEvent(const Event& event, audio::ControlRouter& router,
                      audio::SceneEngine& scenes, const Actions& actions);

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
+#include <vector>
 
 namespace namfx {
 namespace midi {
@@ -114,6 +116,33 @@ void MidiRouter::clearScene(int cc)
     }
     sceneBinds_[static_cast<std::size_t>(cc)] = SceneBind{};
     --ccSceneCount_;
+}
+
+std::vector<MidiRouter::BindInfo> MidiRouter::bindings() const
+{
+    std::vector<BindInfo> out;
+    for (int cc = 0; cc < kCcs; ++cc) {
+        const ParamBind& p = paramBinds_[static_cast<std::size_t>(cc)];
+        if (p.active) {
+            BindInfo b;
+            b.kind = BindInfo::Kind::Param;
+            b.cc = cc;
+            b.moduleId = p.moduleId;
+            b.paramId = p.paramId;
+            out.push_back(std::move(b));
+        }
+    }
+    for (int cc = 0; cc < kCcs; ++cc) {
+        const SceneBind& s = sceneBinds_[static_cast<std::size_t>(cc)];
+        if (s.active) {
+            BindInfo b;
+            b.kind = BindInfo::Kind::Scene;
+            b.cc = cc;
+            b.sceneIndex = s.sceneIndex;
+            out.push_back(std::move(b));
+        }
+    }
+    return out;
 }
 
 void MidiRouter::handleEvent(const Event& event, audio::ControlRouter& router,

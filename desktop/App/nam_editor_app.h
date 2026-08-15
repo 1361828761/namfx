@@ -114,6 +114,8 @@ private:
     juce::String bindingSummary() const;
     void beginLearnParam(const std::string& moduleId, const std::string& paramId);
     void clearMidiBinds();
+    void loadMidiBinds();
+    void saveMidiBinds();
 
     // tunings, indexed 1st string (high E) .. 6th string (low E):
     // 0 = EADGBE (E4 B3 G3 D3 A2 E2), 1 = Drop D (E4 B3 G3 D3 A2 D2)
@@ -168,6 +170,7 @@ private:
         juce::String target;
     };
     std::vector<MidiBind> midiBinds_;
+    juce::File midiBindFile_; // persisted bindings (Documents/namfx)
     // output panel
     std::unique_ptr<juce::Slider> masterSlider_;
     std::unique_ptr<juce::Slider> inputGainSlider_;

@@ -103,6 +103,9 @@ public:
     void midiClearBind(int cc);
     int midiParamBindCount() const { return midi_.ccParamCount(); }
     int midiSceneBindCount() const { return midi_.ccSceneCount(); }
+    // persistence: snapshot / restore all MIDI bindings
+    std::vector<midi::MidiRouter::BindInfo> midiBindings() const;
+    bool midiRestoreBind(const midi::MidiRouter::BindInfo& bind, std::string& error);
 
     // UI readouts
     const dsp::Tuner& tuner() const { return tuner_; }

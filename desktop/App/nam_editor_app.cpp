@@ -252,14 +252,23 @@ void NAMEditorApplication::initialise(const juce::String&)
     std::signal(SIGABRT, &abortHandler);
     crashLog("lifecycle: initialise begin");
     juce::LookAndFeel::setDefaultLookAndFeel(&theme_);
-    demoDir_ = juce::File(NAMFX_DEMO_DIR);
+    // demo presets: exe-adjacent "presets" folder first (packaged build),
+    // then the compile-time source path, then the working directory
+    demoDir_ = juce::File::getSpecialLocation(juce::File::currentApplicationFile)
+                   .getParentDirectory()
+                   .getChildFile("presets");
+    if (!demoDir_.isDirectory()) {
+        demoDir_ = juce::File(NAMFX_DEMO_DIR);
+    }
+    if (!demoDir_.isDirectory()) {
+        demoDir_ = juce::File::getCurrentWorkingDirectory().getChildFile("core/preset/demo");
+    }
     userPresetDir_ = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
                          .getChildFile("namfx")
                          .getChildFile("presets");
-    if (!demoDir_.isDirectory()) {
-        // fall back to the working directory (dev launches from the repo root)
-        demoDir_ = juce::File::getCurrentWorkingDirectory().getChildFile("core/preset/demo");
-    }
+    midiBindFile_ = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                        .getChildFile("namfx")
+                        .getChildFile("midi_binds.txt");
     engineSource_ = std::make_unique<EngineAudioSource>(host_);
     player_.setSource(engineSource_.get());
     // start muted: opening the device can pop (interface power-up noise);
@@ -307,6 +316,7 @@ void NAMEditorApplication::initialise(const juce::String&)
     if (defaultPreset.exists()) {
         loadPresetFile(defaultPreset);
     }
+    loadMidiBinds(); // restore persisted CC bindings (needs a chain)
 }
 
 void NAMEditorApplication::shutdown()
@@ -807,6 +817,7 @@ void NAMEditorApplication::onMidiEvent(const midi::Event& event)
                                       + learningParam_->moduleId + "."
                                       + learningParam_->paramId,
                                   juce::dontSendNotification);
+            saveMidiBinds();
         } else {
             statusLabel_->setText("learn failed: " + juce::String(error),
                                   juce::dontSendNotification);
@@ -823,6 +834,7 @@ void NAMEditorApplication::onMidiEvent(const midi::Event& event)
             statusLabel_->setText(juce::String("learned: CC ") + juce::String(cc) + " -> Scene "
                                       + juce::String(learningScene_),
                                   juce::dontSendNotification);
+            saveMidiBinds();
         } else {
             statusLabel_->setText("learn failed: " + juce::String(error),
                                   juce::dontSendNotification);
@@ -840,6 +852,79 @@ void NAMEditorApplication::beginLearnParam(const std::string& moduleId,
                           juce::dontSendNotification);
 }
 
+void NAMEditorApplication::saveMidiBinds()
+{
+    midiBindFile_.getParentDirectory().createDirectory();
+    juce::FileOutputStream out(midiBindFile_);
+    if (!out.openedOk()) {
+        return;
+    }
+    // authoritative snapshot from the engine
+    for (const midi::MidiRouter::BindInfo& b : host_.midiBindings()) {
+        if (b.kind == midi::MidiRouter::BindInfo::Kind::Param) {
+            out << juce::String("param ") << juce::String(b.cc) << juce::String(" ")
+                << juce::String(b.moduleId) << juce::String(".") << juce::String(b.paramId)
+                << juce::String("\n");
+        } else {
+            out << juce::String("scene ") << juce::String(b.cc) << juce::String(" ")
+                << juce::String(b.sceneIndex) << juce::String("\n");
+        }
+    }
+    out.flush();
+}
+
+void NAMEditorApplication::loadMidiBinds()
+{
+    if (!midiBindFile_.existsAsFile()) {
+        return;
+    }
+    juce::FileInputStream in(midiBindFile_);
+    if (!in.openedOk()) {
+        return;
+    }
+    midiBinds_.clear();
+    while (!in.isExhausted()) {
+        const juce::String line = in.readNextLine().trim();
+        if (line.isEmpty() || line.startsWithChar('#')) {
+            continue;
+        }
+        juce::StringArray parts;
+        parts.addTokens(line, true);
+        if (parts.size() < 2) {
+            continue;
+        }
+        midi::MidiRouter::BindInfo b;
+        b.cc = parts[1].getIntValue();
+        if (parts[0] == "param" && parts.size() >= 3) {
+            // moduleId may contain dots: split at the LAST dot
+            const juce::String target = parts[2];
+            const int dot = target.lastIndexOfChar('.');
+            if (dot <= 0) {
+                continue;
+            }
+            b.kind = midi::MidiRouter::BindInfo::Kind::Param;
+            b.moduleId = target.substring(0, dot).toStdString();
+            b.paramId = target.substring(dot + 1).toStdString();
+        } else if (parts[0] == "scene" && parts.size() >= 3) {
+            b.kind = midi::MidiRouter::BindInfo::Kind::Scene;
+            b.sceneIndex = parts[2].getIntValue();
+        } else {
+            continue;
+        }
+        std::string error;
+        if (host_.midiRestoreBind(b, error)) {
+            if (b.kind == midi::MidiRouter::BindInfo::Kind::Param) {
+                midiBinds_.push_back(MidiBind{b.cc, juce::String(b.moduleId) + "."
+                                                      + juce::String(b.paramId)});
+            } else {
+                midiBinds_.push_back(
+                    MidiBind{b.cc, juce::String("Scene ") + juce::String(b.sceneIndex)});
+            }
+        }
+    }
+    midiBindLabel_->setText(bindingSummary(), juce::dontSendNotification);
+}
+
 void NAMEditorApplication::clearMidiBinds()
 {
     for (const MidiBind& b : midiBinds_) {
@@ -847,6 +932,7 @@ void NAMEditorApplication::clearMidiBinds()
     }
     midiBinds_.clear();
     midiBindLabel_->setText("no MIDI binds", juce::dontSendNotification);
+    saveMidiBinds();
 }
 
 juce::String NAMEditorApplication::bindingSummary() const

@@ -143,6 +143,33 @@ TEST_CASE("midi router binds a CC to a scene and recalls it")
     REQUIRE(midi.ccSceneCount() == 0);
 }
 
+TEST_CASE("midi router exposes bindings for persistence")
+{
+    Chain chain = makeChain();
+    ControlRouter router;
+    SceneEngine scenes;
+    REQUIRE(scenes.load(makeScenes(), chain));
+    MidiRouter midi;
+    REQUIRE(midi.learnBind(router, chain, 21, "gain", "gain"));
+    REQUIRE(midi.bindScene(5, 2));
+
+    const std::vector<MidiRouter::BindInfo> binds = midi.bindings();
+    REQUIRE(binds.size() == 2);
+    // params first (CC ascending), then scenes
+    REQUIRE(binds[0].kind == MidiRouter::BindInfo::Kind::Param);
+    REQUIRE(binds[0].cc == 21);
+    REQUIRE(binds[0].moduleId == "gain");
+    REQUIRE(binds[0].paramId == "gain");
+    REQUIRE(binds[1].kind == MidiRouter::BindInfo::Kind::Scene);
+    REQUIRE(binds[1].cc == 5);
+    REQUIRE(binds[1].sceneIndex == 2);
+
+    // clearing removes them from the snapshot
+    midi.clearBind(21);
+    midi.clearScene(5);
+    REQUIRE(midi.bindings().empty());
+}
+
 TEST_CASE("midi router fires preset requests and toggles on program change")
 {
     MidiRouter midi;

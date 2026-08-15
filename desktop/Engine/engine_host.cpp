@@ -454,6 +454,7 @@ bool EngineHost::savePreset(const std::string& name, const std::string& dir, std
     preset::Preset preset;
     preset.name = name;
     preset.chain = audio::snapshotChain(*chain_);
+    preset.scenes = scenesDefs_; // the current scene bank rides along
     const std::string json = preset::savePreset(preset);
     const std::string path = dir + "/" + name + ".json";
     std::ofstream f(path, std::ios::binary);
@@ -545,6 +546,33 @@ void EngineHost::midiClearBind(int cc)
     std::lock_guard<std::mutex> lock(chainMutex_);
     midi_.clearBind(cc);
     midi_.clearScene(cc);
+}
+
+std::vector<midi::MidiRouter::BindInfo> EngineHost::midiBindings() const
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    return midi_.bindings();
+}
+
+bool EngineHost::midiRestoreBind(const midi::MidiRouter::BindInfo& bind, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (bind.kind == midi::MidiRouter::BindInfo::Kind::Param) {
+        if (chain_ == nullptr) {
+            error = "no chain loaded";
+            return false;
+        }
+        if (!midi_.learnBind(router_, *chain_, bind.cc, bind.moduleId, bind.paramId)) {
+            error = "cannot restore param bind CC " + std::to_string(bind.cc);
+            return false;
+        }
+        return true;
+    }
+    if (!midi_.bindScene(bind.cc, bind.sceneIndex)) {
+        error = "cannot restore scene bind CC " + std::to_string(bind.cc);
+        return false;
+    }
+    return true;
 }
 
 } // namespace desktop
