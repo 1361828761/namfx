@@ -489,6 +489,12 @@ std::vector<EngineHost::SlotInfo> EngineHost::chainInfo() const
             const audio::SlotDef def = chain_->defOf(i);
             info.slot = def.slot;
             info.moduleId = def.moduleId;
+            // asset display name: file basename without extension
+            const std::string& f = def.file;
+            const std::size_t slash = f.find_last_of("/\\");
+            const std::string base = slash == std::string::npos ? f : f.substr(slash + 1);
+            const std::size_t dot = base.find_last_of('.');
+            info.assetName = dot == std::string::npos ? base : base.substr(0, dot);
             info.bypass = def.bypass;
             info.mix = def.mix;
             info.specs = chain_->specsOf(i);

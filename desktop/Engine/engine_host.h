@@ -85,6 +85,7 @@ public:
     struct SlotInfo {
         int slot = 0;
         std::string moduleId;
+        std::string assetName; // loaded model/IR file basename (" when none)
         bool bypass = false;
         float mix = 1.0f;
         std::vector<ParamSpec> specs;

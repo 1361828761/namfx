@@ -117,6 +117,11 @@ juce::String extractJsonString(const juce::String& head, const juce::String& key
 juce::String modelTypeFor(const juce::String& gearType, const juce::String& name)
 {
     const juce::String t = gearType.toLowerCase();
+    // combined amp+cab captures (ToneHunt gear_type "amp_cab")
+    if (t.contains("amp_cab") || t == "ampcab"
+        || (t.contains("amp") && t.contains("cab"))) {
+        return "Amp+Cab";
+    }
     if (t.contains("amp") || t.contains("preamp")) {
         return "Amp";
     }
@@ -124,7 +129,7 @@ juce::String modelTypeFor(const juce::String& gearType, const juce::String& name
         return "Cab";
     }
     const juce::String n = name.toLowerCase();
-    if (n.contains("cab") || n.contains("ir")) {
+    if (n.contains("cab") || n.contains("ir") || n.contains("412") || n.contains("212")) {
         return "Cab";
     }
     if (n.contains("amp") || n.contains("head")) {
@@ -539,35 +544,35 @@ void NAMEditorApplication::refreshModelLibrary()
               });
 }
 
+// module categories with EXPLICIT module ids and an asset-type filter:
+// "amp" -> NAM amp/amp+cab models, "pedal" -> NAM pedal models, "ir" -> IR
+// files, "" -> no asset. Amp and pedal NAM captures stay apart.
+struct NAMGroupDef {
+    const char* name;
+    const char* assetType;
+    std::vector<const char*> ids;
+};
+
+static const NAMGroupDef kNAMGroups[] = {
+    {"Amp (NAM)", "amp", {"amp.nam"}},
+    {"Pedal (NAM)", "pedal", {"amp.nam"}},
+    {"Cabinet", "ir", {"cab.ir"}},
+    {"Distortion", "", {"od.ts808", "od.transparent", "od.mosfet"}},
+    {"Compressor", "", {"comp.ota"}},
+    {"Noise Gate", "", {"gate.ns2"}},
+    {"Modulation", "", {"mod.chorus", "mod.flanger", "mod.phaser", "mod.wah"}},
+    {"Delay", "", {"dly.dm2", "dly.tape"}},
+    {"Reverb", "", {"rvb.hall", "rvb.spring"}},
+    {"Pitch", "", {"pitch.shift", "pitch.octave"}},
+    {"EQ", "", {"eq.ge7", "tone"}},
+    {"Gain", "", {"gain"}},
+};
+
 void NAMEditorApplication::rebuildAddModuleControls()
 {
-    // module categories map from the module-id prefix
-    struct Group {
-        const char* name;
-        const char* prefix;
-    };
-    static const Group kGroups[] = {
-        {"Amp (NAM)", "amp."},        {"Cabinet", "cab."},
-        {"Distortion", "od."},        {"Compressor", "comp."},
-        {"Noise Gate", "gate."},      {"Modulation", "mod."},
-        {"Delay", "dly."},            {"Reverb", "rvb."},
-        {"Pitch", "pitch."},          {"EQ", "eq."},
-        {"Gain / Tone", ""},
-    };
-    const std::vector<std::string> ids = host_.moduleIds();
-
     addGroupBox_->clear(juce::dontSendNotification);
-    for (int g = 0; g < static_cast<int>(std::size(kGroups)); ++g) {
-        bool has = false;
-        for (const std::string& id : ids) {
-            if (juce::String(id).startsWith(kGroups[g].prefix)) {
-                has = true;
-                break;
-            }
-        }
-        if (has) {
-            addGroupBox_->addItem(kGroups[g].name, g + 1);
-        }
+    for (int g = 0; g < static_cast<int>(std::size(kNAMGroups)); ++g) {
+        addGroupBox_->addItem(kNAMGroups[g].name, g + 1);
     }
     if (addGroupBox_->getNumItems() > 0) {
         addGroupBox_->setSelectedId(1, juce::dontSendNotification);
@@ -577,27 +582,15 @@ void NAMEditorApplication::rebuildAddModuleControls()
 
 void NAMEditorApplication::refreshModuleList()
 {
-    struct Group {
-        const char* name;
-        const char* prefix;
-    };
-    static const Group kGroups[] = {
-        {"Amp (NAM)", "amp."},        {"Cabinet", "cab."},
-        {"Distortion", "od."},        {"Compressor", "comp."},
-        {"Noise Gate", "gate."},      {"Modulation", "mod."},
-        {"Delay", "dly."},            {"Reverb", "rvb."},
-        {"Pitch", "pitch."},          {"EQ", "eq."},
-        {"Gain / Tone", ""},
-    };
     const int g = addGroupBox_->getSelectedId() - 1;
     const std::vector<std::string> ids = host_.moduleIds();
 
     addModuleBox_->clear(juce::dontSendNotification);
-    if (g < 0 || g >= static_cast<int>(std::size(kGroups))) {
+    if (g < 0 || g >= static_cast<int>(std::size(kNAMGroups))) {
         return;
     }
-    for (const std::string& id : ids) {
-        if (juce::String(id).startsWith(kGroups[g].prefix)) {
+    for (const char* id : kNAMGroups[g].ids) {
+        if (std::find(ids.begin(), ids.end(), id) != ids.end()) {
             addModuleBox_->addItem(id, static_cast<int>(addModuleBox_->getNumItems()) + 1);
         }
     }
@@ -609,14 +602,16 @@ void NAMEditorApplication::refreshModuleList()
 
 void NAMEditorApplication::refreshAssetList()
 {
+    const int g = addGroupBox_->getSelectedId() - 1;
+    const bool hasAsset =
+        g >= 0 && g < static_cast<int>(std::size(kNAMGroups)) && kNAMGroups[g].assetType[0] != '\0';
+    addAssetBox_->setVisible(hasAsset);
     addAssetBox_->clear(juce::dontSendNotification);
-    const juce::String sel = addModuleBox_->getText();
-    const bool needsAsset = sel.startsWith("amp.") || sel.startsWith("cab.");
-    addAssetBox_->setVisible(needsAsset);
-    if (!needsAsset) {
+    if (!hasAsset) {
         return;
     }
-    if (sel.startsWith("cab.")) {
+    const juce::String assetType = kNAMGroups[g].assetType;
+    if (assetType == "ir") {
         // IR library (flat list)
         for (std::size_t i = 0; i < irFiles_.size(); ++i) {
             addAssetBox_->addItem(irFiles_[i].getFileName(), static_cast<int>(i + 1));
@@ -626,10 +621,16 @@ void NAMEditorApplication::refreshAssetList()
         }
         return;
     }
-    // grouped by type + brand with section headings
+    // NAM models filtered by the group's type: "amp" shows Amp/Amp+Cab
+    // captures, "pedal" shows stompbox captures
+    const bool wantPedal = (assetType == "pedal");
     juce::String currentGroup;
     for (std::size_t i = 0; i < modelFiles_.size(); ++i) {
         const ModelClass c = classifyModel(modelFiles_[i]);
+        const bool isAmp = (c.type == "Amp" || c.type == "Amp+Cab");
+        if (wantPedal ? (c.type != "Pedal") : !isAmp) {
+            continue;
+        }
         const juce::String group = c.type + " / " + c.brand;
         if (group != currentGroup) {
             currentGroup = group;
@@ -982,12 +983,16 @@ void NAMEditorApplication::rebuildChainPanel()
         chainPanelContent_->addAndMakeVisible(grip);
 
         auto* name = new juce::Label();
-        name->setText(juce::String(info.slot) + "  " + info.moduleId, juce::dontSendNotification);
-        name->setBounds(26, y, 150, 20);
+        juce::String nameText = juce::String(info.slot) + "  " + info.moduleId;
+        if (!info.assetName.empty()) {
+            nameText += "  [" + juce::String(info.assetName) + "]";
+        }
+        name->setText(nameText, juce::dontSendNotification);
+        name->setBounds(26, y, 210, 20);
         chainPanelContent_->addAndMakeVisible(name);
 
         auto* up = new juce::TextButton("^");
-        up->setBounds(164, y, 22, 20);
+        up->setBounds(242, y, 22, 20);
         chainPanelContent_->addAndMakeVisible(up);
         up->onClick = [this, slot = info.slot] {
             std::string error;
@@ -996,7 +1001,7 @@ void NAMEditorApplication::rebuildChainPanel()
         };
 
         auto* dn = new juce::TextButton("v");
-        dn->setBounds(188, y, 22, 20);
+        dn->setBounds(266, y, 22, 20);
         chainPanelContent_->addAndMakeVisible(dn);
         dn->onClick = [this, slot = info.slot] {
             std::string error;
@@ -1006,7 +1011,7 @@ void NAMEditorApplication::rebuildChainPanel()
 
         auto* bp = new juce::ToggleButton("Byp");
         bp->setToggleState(info.bypass, juce::dontSendNotification);
-        bp->setBounds(214, y, 44, 20);
+        bp->setBounds(292, y, 44, 20);
         chainPanelContent_->addAndMakeVisible(bp);
         bp->onClick = [this, slot = info.slot, bp] {
             host_.uiSetBypass(slot, bp->getToggleState());
