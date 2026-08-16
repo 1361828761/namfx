@@ -96,6 +96,7 @@ public:
             return false;
         }
         running_ = true;
+        listenFd_ = fd;
         listener_ = std::thread([this, fd] { acceptLoop(fd); });
         return true;
     }
@@ -103,6 +104,12 @@ public:
     void stop()
     {
         running_ = false;
+        // closing the listen socket unblocks accept(); without this the
+        // listener thread never returns and stop()/shutdown() hangs
+        if (listenFd_ != invalidSocket()) {
+            closeSocket(listenFd_);
+            listenFd_ = invalidSocket();
+        }
         if (listener_.joinable()) {
             listener_.join();
         }
@@ -153,7 +160,7 @@ private:
             }
             std::thread([this, fd] { handleConnection(fd); }).detach();
         }
-        closeSocket(listenFd);
+        // the listen socket is closed by stop() (closing it unblocks accept)
     }
 
     void handleConnection(namfx_socket_t fd)
@@ -339,6 +346,7 @@ private:
     HttpHandler handler_;
     std::atomic<bool> running_{false};
     std::atomic<int> activeConnections_{0};
+    namfx_socket_t listenFd_ = invalidSocket();
     std::thread listener_;
 };
 
