@@ -97,6 +97,18 @@ TEST_CASE("engine host applies queued UI bypass writes at the block boundary")
     REQUIRE(after.front().bypass);
 }
 
+TEST_CASE("engine host swaps modules without shifting the remaining chain")
+{
+    auto host = makeHost();
+    std::string error;
+    REQUIRE(host->swapModules(0, 1, error));
+    const std::vector<EngineHost::SlotInfo> after = host->chainInfo();
+    REQUIRE(after.size() == 3);
+    REQUIRE(after[0].moduleId == "eq.ge7");
+    REQUIRE(after[1].moduleId == "od.ts808");
+    REQUIRE(after[2].moduleId == "cab.ir");
+}
+
 TEST_CASE("engine host applies scene recalls at the block boundary")
 {
     auto host = makeHost();

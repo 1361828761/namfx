@@ -32,6 +32,12 @@ void OutputStage::reset()
     bassSm_ = bass_;
     middleSm_ = middle_;
     trebleSm_ = treble_;
+    lowCutSm_ = lowCut_;
+    highCutSm_ = highCut_;
+    lowCutFilter_ = Biquad{};
+    highCutFilter_ = Biquad{};
+    lowCutFilterR_ = Biquad{};
+    highCutFilterR_ = Biquad{};
     low_ = Biquad{};
     mid_ = Biquad{};
     high_ = Biquad{};
@@ -76,6 +82,16 @@ void OutputStage::setTreble(float v)
     treble_ = v;
 }
 
+void OutputStage::setLowCut(float hz)
+{
+    lowCut_ = std::max(20.0f, std::min(1000.0f, hz));
+}
+
+void OutputStage::setHighCut(float hz)
+{
+    highCut_ = std::max(2000.0f, std::min(20000.0f, hz));
+}
+
 void OutputStage::updateEqCoeffs()
 {
     const float fs = static_cast<float>(sampleRate_);
@@ -105,7 +121,33 @@ void OutputStage::updateEqCoeffs()
         b.a1 = -2.0f * cw / a0;
         b.a2 = (1.0f - alpha / A) / a0;
     };
+    auto highPass = [&](float f0, Biquad& b) {
+        const float w0 = 2.0f * kPi * f0 / fs;
+        const float cw = std::cos(w0);
+        const float sw = std::sin(w0);
+        const float alpha = sw * alphaScale;
+        const float a0 = 1.0f + alpha;
+        b.b0 = (1.0f + cw) * 0.5f / a0;
+        b.b1 = -(1.0f + cw) / a0;
+        b.b2 = b.b0;
+        b.a1 = -2.0f * cw / a0;
+        b.a2 = (1.0f - alpha) / a0;
+    };
+    auto lowPass = [&](float f0, Biquad& b) {
+        const float w0 = 2.0f * kPi * f0 / fs;
+        const float cw = std::cos(w0);
+        const float sw = std::sin(w0);
+        const float alpha = sw * alphaScale;
+        const float a0 = 1.0f + alpha;
+        b.b0 = (1.0f - cw) * 0.5f / a0;
+        b.b1 = (1.0f - cw) / a0;
+        b.b2 = b.b0;
+        b.a1 = -2.0f * cw / a0;
+        b.a2 = (1.0f - alpha) / a0;
+    };
 
+    highPass(lowCutSm_, lowCutFilter_);
+    lowPass(highCutSm_, highCutFilter_);
     shelf(250.0f, dbFromParam(bassSm_), low_);
     peak(1000.0f, dbFromParam(middleSm_), mid_);
     shelf(4000.0f, dbFromParam(trebleSm_), high_);
@@ -125,6 +167,16 @@ void OutputStage::updateEqCoeffs()
     highR_.b2 = high_.b2;
     highR_.a1 = high_.a1;
     highR_.a2 = high_.a2;
+    lowCutFilterR_.b0 = lowCutFilter_.b0;
+    lowCutFilterR_.b1 = lowCutFilter_.b1;
+    lowCutFilterR_.b2 = lowCutFilter_.b2;
+    lowCutFilterR_.a1 = lowCutFilter_.a1;
+    lowCutFilterR_.a2 = lowCutFilter_.a2;
+    highCutFilterR_.b0 = highCutFilter_.b0;
+    highCutFilterR_.b1 = highCutFilter_.b1;
+    highCutFilterR_.b2 = highCutFilter_.b2;
+    highCutFilterR_.a1 = highCutFilter_.a1;
+    highCutFilterR_.a2 = highCutFilter_.a2;
 }
 
 void OutputStage::process(const float* inL, const float* inR, float* outL, float* outR, int n)
@@ -137,6 +189,8 @@ void OutputStage::process(const float* inL, const float* inR, float* outL, float
         bassSm_ += smoothK_ * (bass_ - bassSm_);
         middleSm_ += smoothK_ * (middle_ - middleSm_);
         trebleSm_ += smoothK_ * (treble_ - trebleSm_);
+        lowCutSm_ += smoothK_ * (lowCut_ - lowCutSm_);
+        highCutSm_ += smoothK_ * (highCut_ - highCutSm_);
         muteGainSm_ += smoothK_ * (muteTarget - muteGainSm_);
 
         const float inGain = std::pow(10.0f, inputGainSm_ / 20.0f);
@@ -144,6 +198,10 @@ void OutputStage::process(const float* inL, const float* inR, float* outL, float
 
         float v = inL[i] * inGain;
         float shaped = v;
+        lowCutFilter_.run(v, shaped);
+        v = shaped;
+        highCutFilter_.run(v, shaped);
+        v = shaped;
         high_.run(v, shaped);
         v = shaped;
         mid_.run(v, shaped);
@@ -153,6 +211,10 @@ void OutputStage::process(const float* inL, const float* inR, float* outL, float
 
         float vr = inR[i] * inGain;
         float shapedR = vr;
+        lowCutFilterR_.run(vr, shapedR);
+        vr = shapedR;
+        highCutFilterR_.run(vr, shapedR);
+        vr = shapedR;
         highR_.run(vr, shapedR);
         vr = shapedR;
         midR_.run(vr, shapedR);

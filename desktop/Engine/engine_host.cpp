@@ -35,6 +35,8 @@ namespace desktop {
 
 namespace {
 
+constexpr int kMaxChainSlots = 12;
+
 std::string readFileText(const std::string& path)
 {
     std::ifstream f(path, std::ios::binary);
@@ -358,6 +360,10 @@ bool EngineHost::addModuleToChain(const std::string& moduleId, const std::string
         error = "no chain loaded";
         return false;
     }
+    if (chain_->slotCount() >= kMaxChainSlots) {
+        error = "chain limit reached (12 slots)";
+        return false;
+    }
     if (!registry_->has(moduleId)) {
         error = "unknown module " + moduleId;
         return false;
@@ -385,6 +391,47 @@ bool EngineHost::addModuleToChain(const std::string& moduleId, const std::string
     }
     def.slot = nextSlot;
     slots.push_back(std::move(def));
+    return rebuildChain(std::move(slots), error);
+}
+
+bool EngineHost::insertModuleToChain(int atIndex, const std::string& moduleId,
+                                     const std::string& assetFile, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    if (chain_->slotCount() >= kMaxChainSlots) {
+        error = "chain limit reached (12 slots)";
+        return false;
+    }
+    if (!registry_->has(moduleId)) {
+        error = "unknown module " + moduleId;
+        return false;
+    }
+    if ((moduleId == "amp.nam" || moduleId == "cab.ir") && assetFile.empty()) {
+        error = "select an asset (model / IR) for " + moduleId;
+        return false;
+    }
+    if (!assetFile.empty() && !std::ifstream(assetFile).good()) {
+        error = "asset file not found: " + assetFile;
+        return false;
+    }
+    std::vector<audio::SlotDef> slots = audio::snapshotChain(*chain_);
+    audio::SlotDef def;
+    def.category = registry_->categoryOf(moduleId);
+    def.impl = implForModule(moduleId);
+    def.moduleId = moduleId;
+    def.file = assetFile;
+    for (const ParamSpec& spec : registry_->specsFor(moduleId)) {
+        def.params.push_back(ParamInit{spec.id, spec.defaultValue});
+    }
+    const int at = std::min(std::max(atIndex, 0), static_cast<int>(slots.size()));
+    slots.insert(slots.begin() + at, std::move(def));
+    for (std::size_t i = 0; i < slots.size(); ++i) {
+        slots[i].slot = static_cast<int>(i);
+    }
     return rebuildChain(std::move(slots), error);
 }
 
@@ -426,6 +473,31 @@ bool EngineHost::moveModuleTo(int slot, int dstIndex, std::string& error)
         return false;
     }
     return rebuildChain(std::move(reordered), error);
+}
+
+bool EngineHost::swapModules(int slotA, int slotB, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        error = "no chain loaded";
+        return false;
+    }
+    std::vector<audio::SlotDef> slots = audio::snapshotChain(*chain_);
+    int a = -1;
+    int b = -1;
+    for (std::size_t i = 0; i < slots.size(); ++i) {
+        if (slots[i].slot == slotA) a = static_cast<int>(i);
+        if (slots[i].slot == slotB) b = static_cast<int>(i);
+    }
+    if (a < 0 || b < 0 || a == b) {
+        error = "cannot swap slots";
+        return false;
+    }
+    std::swap(slots[static_cast<std::size_t>(a)], slots[static_cast<std::size_t>(b)]);
+    for (std::size_t i = 0; i < slots.size(); ++i) {
+        slots[i].slot = static_cast<int>(i);
+    }
+    return rebuildChain(std::move(slots), error);
 }
 
 bool EngineHost::moveModule(int slot, int direction, std::string& error)
@@ -493,6 +565,19 @@ bool EngineHost::savePreset(const std::string& name, const std::string& dir, std
         return false;
     }
     return true;
+}
+
+std::string EngineHost::exportPresetJson(const std::string& name) const
+{
+    std::lock_guard<std::mutex> lock(chainMutex_);
+    if (chain_ == nullptr) {
+        return {};
+    }
+    preset::Preset preset;
+    preset.name = name.empty() ? "preset" : name;
+    preset.chain = audio::snapshotChain(*chain_);
+    preset.scenes = scenesDefs_;
+    return preset::savePreset(preset);
 }
 
 std::vector<std::string> EngineHost::moduleIds() const

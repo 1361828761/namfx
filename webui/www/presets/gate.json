@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "name": "Noise Gate",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "gate.ns2",
+      "params": { "threshold": 0.4, "decay": 0.5, "level": 0.5 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}

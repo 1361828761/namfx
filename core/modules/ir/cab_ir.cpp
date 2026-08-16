@@ -26,6 +26,16 @@ void registerCabIr(ModuleRegistry& registry)
 bool CabIrModule::loadAsset(const std::string& path)
 {
     const ir::WavData wav = ir::loadWavFile(path);
+    return adoptWav(wav);
+}
+
+bool CabIrModule::loadAssetBytes(const std::uint8_t* data, std::size_t size)
+{
+    return adoptWav(ir::parseWav(data, size));
+}
+
+bool CabIrModule::adoptWav(const ir::WavData& wav)
+{
     if (!wav.ok || wav.samples.empty() || wav.sampleRate <= 0.0) {
         return false;
     }

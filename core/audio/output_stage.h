@@ -27,6 +27,8 @@ public:
     void setBass(float v);   // 0..1 -> -12..+12 dB at 250 Hz
     void setMiddle(float v); // 0..1 -> -12..+12 dB at 1 kHz
     void setTreble(float v); // 0..1 -> -12..+12 dB at 4 kHz
+    void setLowCut(float hz);  // 20..1000 Hz high-pass
+    void setHighCut(float hz); // 2000..20000 Hz low-pass
 
     // audio thread
     void process(const float* inL, const float* inR, float* outL, float* outR, int n);
@@ -61,6 +63,14 @@ private:
     float middleSm_ = 0.5f;
     float treble_ = 0.5f;
     float trebleSm_ = 0.5f;
+    float lowCut_ = 20.0f;
+    float lowCutSm_ = 20.0f;
+    float highCut_ = 20000.0f;
+    float highCutSm_ = 20000.0f;
+    Biquad lowCutFilter_;
+    Biquad highCutFilter_;
+    Biquad lowCutFilterR_;
+    Biquad highCutFilterR_;
     Biquad low_;
     Biquad mid_;
     Biquad high_;

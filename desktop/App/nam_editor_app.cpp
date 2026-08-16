@@ -217,6 +217,7 @@ MainWindow::MainWindow(juce::Component& content)
 {
     setContentNonOwned(&content, false);
     setResizable(true, false);
+    setResizeLimits(1100, 680, 3200, 2200);
     setUsingNativeTitleBar(true);
     // remember the window size across launches (the user resizes it once,
     // it stays that way); default is large enough for the device + tuner +
@@ -469,6 +470,7 @@ void NAMEditorApplication::rebuildPresetList()
     }
     statusLabel_->setText(juce::String(presetFiles_.size()) + " presets",
                           juce::dontSendNotification);
+    rebuildPresetSidebar();
 }
 
 void NAMEditorApplication::loadPresetFile(const juce::File& file)
@@ -652,15 +654,16 @@ void NAMEditorApplication::refreshAssetList()
     }
 }
 
-void NAMEditorApplication::addSectionLabel(const juce::String& text, int y)
+void NAMEditorApplication::addSectionLabel(const juce::String& text, int x, int y)
 {
     auto* l = new juce::Label();
     l->setText(text, juce::dontSendNotification);
     l->setFont(juce::Font(juce::FontOptions().withHeight(11.0f).withStyleFlags(
         juce::Font::bold)));
     l->setColour(juce::Label::textColourId, NAMTheme::textDim());
-    l->setBounds(16, y, 200, 14);
+    l->setBounds(x, y, 200, 14);
     addAndMakeVisible(l);
+    sectionLabels_.push_back(l);
 }
 
 void NAMEditorApplication::saveUserPreset()
@@ -719,7 +722,7 @@ void GripLabel::mouseDrag(const juce::MouseEvent& e)
     }
     // map the mouse into the panel and update the insertion indicator
     const juce::Point<int> p = content_.getLocalPoint(e.eventComponent, e.getPosition());
-    content_.setDropIndexAt(p.getY());
+    content_.setDropIndexAt(p.getX());
 }
 
 void GripLabel::mouseUp(const juce::MouseEvent&)
@@ -734,11 +737,11 @@ void GripLabel::mouseUp(const juce::MouseEvent&)
     }
 }
 
-void ChainPanelContent::setDropIndexAt(int y)
+void ChainPanelContent::setDropIndexAt(int x)
 {
     int row = 0;
     for (int i = 0; i < static_cast<int>(rowBounds_.size()); ++i) {
-        if (y < rowBounds_[static_cast<std::size_t>(i)]) {
+        if (x < rowBounds_[static_cast<std::size_t>(i)]) {
             row = i;
             break;
         }
@@ -758,12 +761,28 @@ int ChainPanelContent::takeDropIndex()
 
 void ChainPanelContent::paint(juce::Graphics& g)
 {
-    g.fillAll(NAMTheme::panel());
-    if (dropIndex_ >= 0 && dropIndex_ < static_cast<int>(rowBounds_.size())) {
-        // insertion indicator between rows
-        const int y = rowBounds_[static_cast<std::size_t>(dropIndex_)] - 2;
+    g.fillAll(NAMTheme::bg());
+    int left = 8;
+    for (std::size_t i = 0; i < rowBounds_.size(); ++i) {
+        const int right = rowBounds_[i] - 4;
+        const auto card = juce::Rectangle<float>(static_cast<float>(left), 8.0f,
+                                                 static_cast<float>(std::max(right - left, 36)),
+                                                 static_cast<float>(getHeight() - 16));
+        if (i > 0) {
+            g.setColour(NAMTheme::accentDim());
+            g.fillRect(static_cast<float>(left - 8), 40.0f, 8.0f, 2.0f);
+        }
+        g.setColour(i % 2 == 0 ? NAMTheme::panel() : NAMTheme::panelHi().withAlpha(0.72f));
+        g.fillRoundedRectangle(card, 8.0f);
+        g.setColour(NAMTheme::panelBorder());
+        g.drawRoundedRectangle(card, 8.0f, 1.0f);
+        left = rowBounds_[i];
+    }
+    if (dropIndex_ >= 0 && dropIndex_ <= static_cast<int>(rowBounds_.size())) {
+        const int x = dropIndex_ == 0 ? 8 : rowBounds_[static_cast<std::size_t>(dropIndex_ - 1)] - 8;
         g.setColour(NAMTheme::accent());
-        g.fillRect(4, y, getWidth() - 8, 2);
+        g.fillRoundedRectangle(static_cast<float>(x), 6.0f, 3.0f,
+                               static_cast<float>(getHeight() - 12), 1.5f);
     }
 }
 
@@ -1001,6 +1020,67 @@ juce::String NAMEditorApplication::bindingSummary() const
     return s;
 }
 
+
+void PresetListContent::paint(juce::Graphics& g)
+{
+    g.fillAll(NAMTheme::bg());
+    const int rowH = kRowH;
+    for (std::size_t i = 0; i < items_.size(); ++i) {
+        const int y = static_cast<int>(i) * rowH;
+        const bool sel = !items_[i].isSection && items_[i].fileIndex == selected_;
+        if (items_[i].isSection) {
+            g.setColour(NAMTheme::panelHi());
+            g.fillRoundedRectangle(4.0f, static_cast<float>(y + 5),
+                                   static_cast<float>(getWidth() - 8), 26.0f, 6.0f);
+            g.setColour(NAMTheme::textDim());
+            g.setFont(juce::Font(juce::FontOptions().withHeight(10.0f).withStyleFlags(juce::Font::bold)));
+            g.drawText(items_[i].name.toUpperCase(), 14, y + 10, getWidth() - 28, 16, juce::Justification::left);
+        } else {
+            const auto row = juce::Rectangle<float>(4.0f, static_cast<float>(y + 3),
+                                                    static_cast<float>(getWidth() - 8), 30.0f);
+            g.setColour(sel ? NAMTheme::accent() : NAMTheme::panel());
+            g.fillRoundedRectangle(row, 6.0f);
+            g.setColour(sel ? NAMTheme::bg() : NAMTheme::text());
+            g.setFont(juce::Font(juce::FontOptions().withHeight(13.0f)));
+            g.drawText(items_[i].name, 14, y + 8, getWidth() - 28, 20, juce::Justification::left);
+        }
+    }
+    setSize(getWidth(), static_cast<int>(items_.size()) * rowH);
+}
+
+void PresetListContent::mouseDown(const juce::MouseEvent& e)
+{
+    const int row = hitTestRow(e.getPosition().getY());
+    if (row >= 0 && row < static_cast<int>(items_.size()) && !items_[static_cast<std::size_t>(row)].isSection) {
+        selected_ = items_[static_cast<std::size_t>(row)].fileIndex;
+        repaint();
+        if (onSelect) onSelect(selected_);
+    }
+}
+
+int PresetListContent::hitTestRow(int y) const
+{
+    return y / kRowH;
+}
+
+void NAMEditorApplication::rebuildPresetSidebar()
+{
+    std::vector<PresetListContent::Item> items;
+    bool inDemo = true;
+    items.push_back({"Demo", true, -1});
+    for (std::size_t i = 0; i < presetFiles_.size(); ++i) {
+        if (inDemo && presetFiles_[i].getParentDirectory() != demoDir_) {
+            inDemo = false;
+            items.push_back({"Mine", true, -1});
+        }
+        items.push_back({presetFiles_[i].getFileNameWithoutExtension(), false, static_cast<int>(i)});
+    }
+    presetListContent_->setItems(items);
+    const int sel = presetBox_->getSelectedId() - 1;
+    presetListContent_->setSelectedIndex(sel);
+    presetListContent_->setSize(presetListViewport_->getWidth() - 12, static_cast<int>(items.size()) * PresetListContent::kRowH);
+}
+
 void NAMEditorApplication::rebuildSceneBar()
 {
     sceneBar_->removeAllChildren();
@@ -1028,24 +1108,60 @@ void NAMEditorApplication::rebuildChainPanel()
 {
     chainPanelContent_->removeAllChildren();
     const std::vector<EngineHost::SlotInfo> infos = host_.chainInfo();
-    int y = 4;
-    std::vector<int> bounds;
+    constexpr int cardW = 270;
+    constexpr int cardGap = 12;
+    constexpr int top = 8;
+    int maxParams = 0;
     for (const EngineHost::SlotInfo& info : infos) {
+        maxParams = std::max(maxParams, static_cast<int>(info.specs.size()));
+    }
+    const int contentH = std::max(300, 106 + maxParams * 24 + 22);
+    std::vector<int> bounds;
+    for (std::size_t cardIndex = 0; cardIndex < infos.size(); ++cardIndex) {
+        const EngineHost::SlotInfo& info = infos[cardIndex];
+        const int x = top + static_cast<int>(cardIndex) * (cardW + cardGap);
         auto* grip = new GripLabel(info.slot, *this, *chainPanelContent_);
-        grip->setBounds(4, y + 1, 18, 18);
+        grip->setBounds(x + 8, 14, 18, 18);
         chainPanelContent_->addAndMakeVisible(grip);
 
         auto* name = new juce::Label();
-        juce::String nameText = juce::String(info.slot) + "  " + info.moduleId;
-        if (!info.assetName.empty()) {
-            nameText += "  [" + juce::String(info.assetName) + "]";
-        }
+        juce::String nameText = juce::String(info.slot + 1).paddedLeft('0', 2) + "  "
+                                + juce::String(info.moduleId);
         name->setText(nameText, juce::dontSendNotification);
-        name->setBounds(26, y, 210, 20);
+        name->setFont(juce::Font(juce::FontOptions().withHeight(13.0f).withStyleFlags(juce::Font::bold)));
+        name->setColour(juce::Label::textColourId, NAMTheme::textBright());
+        name->setBounds(x + 32, 10, cardW - 42, 24);
         chainPanelContent_->addAndMakeVisible(name);
 
+        auto* asset = new juce::Label();
+        asset->setText(info.assetName.empty() ? "Built-in DSP" : juce::String(info.assetName),
+                       juce::dontSendNotification);
+        asset->setColour(juce::Label::textColourId, NAMTheme::textDim());
+        asset->setFont(juce::Font(juce::FontOptions().withHeight(11.0f)));
+        asset->setBounds(x + 14, 34, cardW - 28, 18);
+        chainPanelContent_->addAndMakeVisible(asset);
+
+        auto* bp = new juce::ToggleButton("Byp");
+        bp->setToggleState(info.bypass, juce::dontSendNotification);
+        bp->setBounds(x + 14, 58, 76, 24);
+        chainPanelContent_->addAndMakeVisible(bp);
+        bp->onClick = [this, slot = info.slot, bp] {
+            host_.uiSetBypass(slot, bp->getToggleState());
+        };
+
+        auto* mixSl = new juce::Slider(juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
+        mixSl->setRange(0.0, 1.0, 0.01);
+        mixSl->setValue(info.mix, juce::dontSendNotification);
+        mixSl->setDoubleClickReturnValue(true, 1.0);
+        mixSl->setTooltip("Mix");
+        mixSl->setBounds(x + 132, 62, 54, 18);
+        chainPanelContent_->addAndMakeVisible(mixSl);
+        mixSl->onValueChange = [this, mixSl, slot = info.slot] {
+            host_.uiSetMix(slot, static_cast<float>(mixSl->getValue()));
+        };
+
         auto* up = new juce::TextButton("^");
-        up->setBounds(242, y, 22, 20);
+        up->setBounds(x + 190, 58, 22, 24);
         chainPanelContent_->addAndMakeVisible(up);
         up->onClick = [this, slot = info.slot] {
             std::string error;
@@ -1054,7 +1170,7 @@ void NAMEditorApplication::rebuildChainPanel()
         };
 
         auto* dn = new juce::TextButton("v");
-        dn->setBounds(266, y, 22, 20);
+        dn->setBounds(x + 216, 58, 22, 24);
         chainPanelContent_->addAndMakeVisible(dn);
         dn->onClick = [this, slot = info.slot] {
             std::string error;
@@ -1062,51 +1178,39 @@ void NAMEditorApplication::rebuildChainPanel()
             refreshChainViews();
         };
 
-        auto* bp = new juce::ToggleButton("Byp");
-        bp->setToggleState(info.bypass, juce::dontSendNotification);
-        bp->setBounds(292, y, 44, 20);
-        chainPanelContent_->addAndMakeVisible(bp);
-        bp->onClick = [this, slot = info.slot, bp] {
-            host_.uiSetBypass(slot, bp->getToggleState());
+        auto* del = new juce::TextButton("Del");
+        del->setBounds(x + 242, 58, 24, 24);
+        chainPanelContent_->addAndMakeVisible(del);
+        del->onClick = [this, slot = info.slot] {
+            std::string error;
+            host_.removeModuleFromChain(slot, error);
+            refreshChainViews();
         };
 
-        auto* ml = new juce::Label();
-        ml->setText("Mix", juce::dontSendNotification);
-        ml->setBounds(344, y, 30, 20);
-        chainPanelContent_->addAndMakeVisible(ml);
-
-        auto* mixSl = new juce::Slider(juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
-        mixSl->setRange(0.0, 1.0, 0.01);
-        mixSl->setValue(info.mix, juce::dontSendNotification);
-        mixSl->setDoubleClickReturnValue(true, 1.0); // double-click: full wet
-        mixSl->setBounds(378, y, 80, 18);
-        chainPanelContent_->addAndMakeVisible(mixSl);
-        mixSl->onValueChange = [this, mixSl, slot = info.slot] {
-            host_.uiSetMix(slot, static_cast<float>(mixSl->getValue()));
-        };
-
-        int py = y + 22;
+        int py = 94;
         for (std::size_t p = 0; p < info.specs.size(); ++p) {
             auto* pl = new juce::Label();
-            pl->setText(info.specs[p].displayName.empty() ? info.specs[p].id
-                                                          : info.specs[p].displayName,
+            pl->setText(info.specs[p].displayName.empty() ? info.specs[p].id : info.specs[p].displayName,
                         juce::dontSendNotification);
-            pl->setBounds(8, py, 110, 18);
+            pl->setColour(juce::Label::textColourId, NAMTheme::text());
+            pl->setBounds(x + 14, py, 70, 18);
             chainPanelContent_->addAndMakeVisible(pl);
 
             auto* sl = new juce::Slider(juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
             sl->setRange(info.specs[p].min, info.specs[p].max, 0.001);
             sl->setValue(info.values[p], juce::dontSendNotification);
-            sl->setBounds(122, py, 240, 18);
+            sl->setBounds(x + 88, py + 2, 100, 18);
             chainPanelContent_->addAndMakeVisible(sl);
 
             auto* vl = new juce::Label();
             vl->setText(juce::String(info.values[p], 2), juce::dontSendNotification);
-            vl->setBounds(368, py, 90, 18);
+            vl->setColour(juce::Label::textColourId, NAMTheme::textDim());
+            vl->setBounds(x + 192, py, 42, 18);
             chainPanelContent_->addAndMakeVisible(vl);
 
-            auto* lrn = new juce::TextButton("Lrn");
-            lrn->setBounds(466, py - 1, 36, 18);
+            auto* lrn = new juce::TextButton("L");
+            lrn->setTooltip("MIDI learn");
+            lrn->setBounds(x + 238, py - 1, 28, 20);
             chainPanelContent_->addAndMakeVisible(lrn);
             const std::string lrnModuleId = info.moduleId;
             const std::string lrnParamId = info.specs[p].id;
@@ -1116,27 +1220,18 @@ void NAMEditorApplication::rebuildChainPanel()
 
             const int slot = info.slot;
             const std::string paramId = info.specs[p].id;
-            sl->setDoubleClickReturnValue(true, info.specs[p].defaultValue); // reset to default
+            sl->setDoubleClickReturnValue(true, info.specs[p].defaultValue);
             sl->onValueChange = [this, sl, vl, slot, paramId] {
                 host_.uiSetParam(slot, paramId, static_cast<float>(sl->getValue()));
                 vl->setText(juce::String(sl->getValue(), 2), juce::dontSendNotification);
             };
-            py += 22;
+            py += 24;
         }
-
-        auto* del = new juce::TextButton("Del");
-        del->setBounds(466, y, 40, 20);
-        chainPanelContent_->addAndMakeVisible(del);
-        del->onClick = [this, slot = info.slot] {
-            std::string error;
-            host_.removeModuleFromChain(slot, error);
-            refreshChainViews();
-        };
-
-        y = py + 6;
-        bounds.push_back(y);
+        bounds.push_back(x + cardW + cardGap);
     }
-    chainPanelContent_->setSize(1220, std::max(y, 200));
+    const int contentWidth = std::max(chainPanelViewport_->getWidth() - 12, 720);
+    const int chainWidth = std::max(contentWidth, top + static_cast<int>(infos.size()) * (cardW + cardGap));
+    chainPanelContent_->setSize(chainWidth, contentH);
     chainPanelContent_->setRowBounds(bounds);
     chainPanelViewport_->setViewedComponent(chainPanelContent_.get(), false);
 }
@@ -1250,32 +1345,55 @@ void NAMEditorApplication::applyAudioSetup()
 
 void NAMEditorApplication::buildUi()
 {
-    setSize(1280, 880);
+    setSize(1280, 780);
 
-    addSectionLabel("PRESET", 8);
+    const int leftW = 220;
+    const int mainX = leftW + 12;
+    const int mainW = getWidth() - mainX - 12;
+
+    // --- Left sidebar: preset list ---
+    addSectionLabel("PRESETS", 12, 12);
+    presetListViewport_ = std::make_unique<juce::Viewport>();
+    presetListViewport_->setBounds(12, 32, leftW - 20, getHeight() - 180);
+    presetListViewport_->setScrollBarsShown(true, false);
+    addAndMakeVisible(*presetListViewport_);
+    presetListContent_ = std::make_unique<PresetListContent>();
+    presetListContent_->onSelect = [this](int idx) {
+        if (idx >= 0 && idx < static_cast<int>(presetFiles_.size())) {
+            presetBox_->setSelectedId(idx + 1, juce::dontSendNotification);
+            loadSelectedPreset();
+        }
+    };
+    presetListViewport_->setViewedComponent(presetListContent_.get(), false);
+
+    statusLabel_ = std::make_unique<juce::Label>();
+    statusLabel_->setBounds(12, getHeight() - 164, leftW - 20, 18);
+    addAndMakeVisible(*statusLabel_);
+
+    xrunLabel_ = std::make_unique<juce::Label>();
+    xrunLabel_->setBounds(12, getHeight() - 144, leftW - 20, 16);
+    addAndMakeVisible(*xrunLabel_);
+
+    // --- Main area: top control bar ---
     presetBox_ = std::make_unique<juce::ComboBox>();
-    presetBox_->setBounds(16, 26, 360, 28);
+    presetBox_->setBounds(mainX, 10, 280, 26);
     addAndMakeVisible(*presetBox_);
     presetBox_->onChange = [this] { loadSelectedPreset(); };
 
     loadButton_ = std::make_unique<juce::TextButton>("Load");
-    loadButton_->setBounds(384, 26, 72, 28);
+    loadButton_->setBounds(mainX + 288, 10, 56, 26);
     addAndMakeVisible(*loadButton_);
     loadButton_->onClick = [this] { loadSelectedPreset(); };
 
-    // delete the selected USER preset (demo presets are protected)
     delPresetButton_ = std::make_unique<juce::TextButton>("Del");
-    delPresetButton_->setBounds(460, 26, 40, 28);
+    delPresetButton_->setBounds(mainX + 350, 10, 40, 26);
     addAndMakeVisible(*delPresetButton_);
     delPresetButton_->onClick = [this] {
         const int idx = presetBox_->getSelectedId();
-        if (idx <= 0 || idx > static_cast<int>(presetFiles_.size())) {
-            return;
-        }
+        if (idx <= 0 || idx > static_cast<int>(presetFiles_.size())) return;
         const juce::File f = presetFiles_[static_cast<std::size_t>(idx - 1)];
         if (f.getParentDirectory() != userPresetDir_) {
-            statusLabel_->setText("demo presets cannot be deleted",
-                                  juce::dontSendNotification);
+            statusLabel_->setText("demo presets cannot be deleted", juce::dontSendNotification);
             return;
         }
         f.deleteFile();
@@ -1283,37 +1401,25 @@ void NAMEditorApplication::buildUi()
         statusLabel_->setText("deleted " + f.getFileName(), juce::dontSendNotification);
     };
 
-    // save the current chain as a user preset (up to 100)
     presetNameBox_ = std::make_unique<juce::TextEditor>();
     presetNameBox_->setText("my_tone", false);
-    presetNameBox_->setBounds(508, 26, 160, 28);
+    presetNameBox_->setBounds(mainX + 400, 10, 140, 26);
     addAndMakeVisible(*presetNameBox_);
 
     savePresetButton_ = std::make_unique<juce::TextButton>("Save");
-    savePresetButton_->setBounds(674, 26, 56, 28);
+    savePresetButton_->setBounds(mainX + 546, 10, 52, 26);
     addAndMakeVisible(*savePresetButton_);
     savePresetButton_->onClick = [this] { saveUserPreset(); };
 
-    statusLabel_ = std::make_unique<juce::Label>();
-    statusLabel_->setBounds(700, 30, 330, 20);
-    addAndMakeVisible(*statusLabel_);
-
-    xrunLabel_ = std::make_unique<juce::Label>();
-    xrunLabel_->setBounds(1040, 30, 200, 20);
-    addAndMakeVisible(*xrunLabel_);
-
-    addSectionLabel("AUDIO", 62);
-    // audio device panel: type / device / sample rate / buffer size
+    // --- Audio device row ---
+    addSectionLabel("AUDIO", mainX, 46);
     deviceTypeBox_ = std::make_unique<juce::ComboBox>();
-    deviceTypeBox_->setBounds(16, 80, 240, 26);
+    deviceTypeBox_->setBounds(mainX, 64, 170, 24);
     addAndMakeVisible(*deviceTypeBox_);
     deviceTypeBox_->onChange = [this] {
         const int typeIdx = deviceTypeBox_->getSelectedId();
-        const juce::OwnedArray<juce::AudioIODeviceType>& types =
-            deviceManager_.getAvailableDeviceTypes();
+        const juce::OwnedArray<juce::AudioIODeviceType>& types = deviceManager_.getAvailableDeviceTypes();
         if (typeIdx > 0 && typeIdx <= types.size()) {
-            // mute BEFORE the device restarts (the type switch itself stops
-            // the callback) and hold it until the new device warms up
             host_.output().setMute(true);
             deviceManager_.setCurrentAudioDeviceType(types[typeIdx - 1]->getTypeName(), false);
             refreshAudioDeviceControls();
@@ -1322,56 +1428,51 @@ void NAMEditorApplication::buildUi()
     };
 
     deviceBox_ = std::make_unique<juce::ComboBox>();
-    deviceBox_->setBounds(264, 80, 300, 26);
+    deviceBox_->setBounds(mainX + 178, 64, 260, 24);
     addAndMakeVisible(*deviceBox_);
 
     sampleRateBox_ = std::make_unique<juce::ComboBox>();
-    sampleRateBox_->setBounds(572, 80, 100, 26);
+    sampleRateBox_->setBounds(mainX + 446, 64, 90, 24);
     addAndMakeVisible(*sampleRateBox_);
 
     bufferSizeBox_ = std::make_unique<juce::ComboBox>();
-    bufferSizeBox_->setBounds(680, 80, 100, 26);
+    bufferSizeBox_->setBounds(mainX + 544, 64, 80, 24);
     addAndMakeVisible(*bufferSizeBox_);
 
     applyAudioButton_ = std::make_unique<juce::TextButton>("Apply");
-    applyAudioButton_->setBounds(788, 80, 60, 26);
+    applyAudioButton_->setBounds(mainX + 632, 64, 52, 24);
     addAndMakeVisible(*applyAudioButton_);
     applyAudioButton_->onClick = [this] { applyAudioSetup(); };
 
-    // master bypass: clean input passthrough (whole engine skipped)
     bypassToggle_ = std::make_unique<juce::ToggleButton>("Bypass");
-    bypassToggle_->setBounds(856, 80, 80, 26);
+    bypassToggle_->setBounds(mainX + 694, 64, 72, 24);
     bypassToggle_->setToggleState(false, juce::dontSendNotification);
     addAndMakeVisible(*bypassToggle_);
-    bypassToggle_->onClick = [this] {
-        host_.setBypass(bypassToggle_->getToggleState());
-    };
+    bypassToggle_->onClick = [this] { host_.setBypass(bypassToggle_->getToggleState()); };
 
-    addSectionLabel("TUNER", 116);
-    // tuner panel: tuning selection + graphical deviation meter
+    // --- Tuner row ---
+    addSectionLabel("TUNER", mainX, 98);
     tuningBox_ = std::make_unique<juce::ComboBox>();
-    tuningBox_->setBounds(16, 134, 120, 26);
+    tuningBox_->setBounds(mainX, 116, 100, 24);
     addAndMakeVisible(*tuningBox_);
     tuningBox_->addItem("EADGBE", 1);
     tuningBox_->addItem("Drop D", 2);
     tuningBox_->setSelectedId(1, juce::dontSendNotification);
     tuningBox_->onChange = [this] {
         tuning_ = tuningBox_->getSelectedId() - 1;
-        if (tuning_ < 0 || tuning_ >= kTuningCount) {
-            tuning_ = 0;
-        }
+        if (tuning_ < 0 || tuning_ >= kTuningCount) tuning_ = 0;
     };
 
     tunerMeter_ = std::make_unique<TunerMeter>();
-    tunerMeter_->setBounds(144, 130, 480, 34);
+    tunerMeter_->setBounds(mainX + 110, 114, 400, 28);
     addAndMakeVisible(*tunerMeter_);
 
     tunerLabel_ = std::make_unique<juce::Label>();
-    tunerLabel_->setBounds(636, 134, 620, 24);
+    tunerLabel_->setBounds(mainX + 518, 116, 460, 24);
     addAndMakeVisible(*tunerLabel_);
 
     tunerToggle_ = std::make_unique<juce::ToggleButton>("Tuner");
-    tunerToggle_->setBounds(16, 168, 88, 24);
+    tunerToggle_->setBounds(mainX, 146, 70, 22);
     tunerToggle_->setToggleState(true, juce::dontSendNotification);
     addAndMakeVisible(*tunerToggle_);
     tunerToggle_->onClick = [this] {
@@ -1383,32 +1484,31 @@ void NAMEditorApplication::buildUi()
     };
 
     sceneLabel_ = std::make_unique<juce::Label>();
-    sceneLabel_->setBounds(120, 168, 400, 20);
+    sceneLabel_->setBounds(mainX + 80, 146, 300, 20);
     addAndMakeVisible(*sceneLabel_);
 
-    addSectionLabel("CHAIN", 200);
-    // add-module row: category -> module -> asset (NAM model / IR)
+    // --- Add module row ---
+    addSectionLabel("ADD MODULE", mainX, 178);
     addGroupBox_ = std::make_unique<juce::ComboBox>();
-    addGroupBox_->setBounds(16, 218, 150, 26);
+    addGroupBox_->setBounds(mainX, 196, 140, 24);
     addAndMakeVisible(*addGroupBox_);
     addGroupBox_->onChange = [this] { refreshModuleList(); };
 
     addModuleBox_ = std::make_unique<juce::ComboBox>();
-    addModuleBox_->setBounds(174, 218, 170, 26);
+    addModuleBox_->setBounds(mainX + 148, 196, 160, 24);
     addAndMakeVisible(*addModuleBox_);
     addModuleBox_->onChange = [this] { refreshAssetList(); };
 
     addAssetBox_ = std::make_unique<juce::ComboBox>();
-    addAssetBox_->setBounds(352, 218, 360, 26);
+    addAssetBox_->setBounds(mainX + 316, 196, 300, 24);
     addAndMakeVisible(*addAssetBox_);
 
     addModuleButton_ = std::make_unique<juce::TextButton>("Add");
-    addModuleButton_->setBounds(720, 218, 56, 26);
-    addAndMakeVisible(*addModuleButton_);    addModuleButton_->onClick = [this] {
+    addModuleButton_->setBounds(mainX + 624, 196, 48, 24);
+    addAndMakeVisible(*addModuleButton_);
+    addModuleButton_->onClick = [this] {
         const int idx = addModuleBox_->getSelectedId();
-        if (idx <= 0) {
-            return;
-        }
+        if (idx <= 0) return;
         std::string moduleId = addModuleBox_->getText().toStdString();
         std::string asset;
         if (juce::String(moduleId).startsWith("amp.")) {
@@ -1417,14 +1517,11 @@ void NAMEditorApplication::buildUi()
                 statusLabel_->setText("select a model first", juce::dontSendNotification);
                 return;
             }
-            asset = modelFiles_[static_cast<std::size_t>(aidx - 1)].getFullPathName()
-                        .toStdString();
+            asset = modelFiles_[static_cast<std::size_t>(aidx - 1)].getFullPathName().toStdString();
         } else if (juce::String(moduleId).startsWith("cab.")) {
-            // cabinet modules use the selected IR (default: first in library)
             const int aidx = addAssetBox_->getSelectedId();
             if (aidx > 0 && aidx <= static_cast<int>(irFiles_.size())) {
-                asset = irFiles_[static_cast<std::size_t>(aidx - 1)].getFullPathName()
-                            .toStdString();
+                asset = irFiles_[static_cast<std::size_t>(aidx - 1)].getFullPathName().toStdString();
             } else if (!irFiles_.empty()) {
                 asset = irFiles_[0].getFullPathName().toStdString();
             } else {
@@ -1435,14 +1532,12 @@ void NAMEditorApplication::buildUi()
         if (host_.addModuleToChain(moduleId, asset, error)) {
             refreshChainViews();
         } else {
-            statusLabel_->setText("add failed: " + juce::String(error),
-                                  juce::dontSendNotification);
+            statusLabel_->setText("add failed: " + juce::String(error), juce::dontSendNotification);
         }
     };
 
-    // import a .nam file into the user model library (Documents/namfx/models)
     importModelButton_ = std::make_unique<juce::TextButton>("Import");
-    importModelButton_->setBounds(784, 218, 72, 26);
+    importModelButton_->setBounds(mainX + 680, 196, 60, 24);
     addAndMakeVisible(*importModelButton_);
     importModelButton_->onClick = [this] {
 #ifdef _WIN32
@@ -1454,9 +1549,7 @@ void NAMEditorApplication::buildUi()
         ofn.nMaxFile = MAX_PATH;
         ofn.lpstrTitle = "Import NAM model";
         ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-        if (!GetOpenFileNameA(&ofn)) {
-            return;
-        }
+        if (!GetOpenFileNameA(&ofn)) return;
         const juce::File src(ofn.lpstrFile);
 #else
         return;
@@ -1467,7 +1560,7 @@ void NAMEditorApplication::buildUi()
                                  .getChildFile(isIr ? "irs" : "models");
         destDir.createDirectory();
         if (src.copyFileTo(destDir.getChildFile(src.getFileName()))) {
-            refreshModelLibrary(); // scans models + IRs
+            refreshModelLibrary();
             refreshAssetList();
             statusLabel_->setText("imported " + src.getFileName(), juce::dontSendNotification);
         } else {
@@ -1475,26 +1568,26 @@ void NAMEditorApplication::buildUi()
         }
     };
 
-    // chain edit panel: one block per slot (name, bypass, per-parameter
-    // sliders, delete), scrollable
+    // --- Chain edit panel ---
     chainPanelViewport_ = std::make_unique<juce::Viewport>();
-    chainPanelViewport_->setBounds(16, 252, 1240, 250);
+    chainPanelViewport_->setBounds(mainX, 230, mainW, 340);
     addAndMakeVisible(*chainPanelViewport_);
     chainPanelContent_ = std::make_unique<ChainPanelContent>();
     chainPanelViewport_->setViewedComponent(chainPanelContent_.get(), false);
 
-    addSectionLabel("SCENE", 510);
+    // --- Scene bar ---
+    addSectionLabel("SCENE", mainX, 580);
     sceneBar_ = std::make_unique<juce::Component>();
-    sceneBar_->setBounds(16, 528, 900, 26);
+    sceneBar_->setBounds(mainX, 598, 720, 26);
     addAndMakeVisible(*sceneBar_);
 
     sceneNameBox_ = std::make_unique<juce::TextEditor>();
     sceneNameBox_->setText("my_scene", false);
-    sceneNameBox_->setBounds(924, 528, 150, 26);
+    sceneNameBox_->setBounds(mainX + 730, 598, 140, 26);
     addAndMakeVisible(*sceneNameBox_);
 
     sceneSaveButton_ = std::make_unique<juce::TextButton>("Save");
-    sceneSaveButton_->setBounds(1080, 528, 56, 26);
+    sceneSaveButton_->setBounds(mainX + 876, 598, 48, 26);
     addAndMakeVisible(*sceneSaveButton_);
     sceneSaveButton_->onClick = [this] {
         std::string error;
@@ -1504,14 +1597,12 @@ void NAMEditorApplication::buildUi()
             rebuildSceneBar();
             refreshChainViews();
         } else {
-            statusLabel_->setText("scene save failed: " + juce::String(error),
-                                  juce::dontSendNotification);
+            statusLabel_->setText("scene save failed: " + juce::String(error), juce::dontSendNotification);
         }
     };
 
-    // MIDI: bind display + clear + scene learn (param learn is per row)
     sceneLearnButton_ = std::make_unique<juce::TextButton>("Lrn CC");
-    sceneLearnButton_->setBounds(1142, 528, 64, 26);
+    sceneLearnButton_->setBounds(mainX + 930, 598, 60, 26);
     addAndMakeVisible(*sceneLearnButton_);
     sceneLearnButton_->onClick = [this] {
         if (selectedScene_ < 0) {
@@ -1519,42 +1610,40 @@ void NAMEditorApplication::buildUi()
             return;
         }
         learningScene_ = selectedScene_ + 1;
-        statusLabel_->setText(juce::String("learning: move a CC for Scene ")
-                                  + juce::String(learningScene_),
-                              juce::dontSendNotification);
+        statusLabel_->setText(juce::String("learning: move a CC for Scene ") + juce::String(learningScene_), juce::dontSendNotification);
     };
 
+    // --- MIDI ---
     midiBindLabel_ = std::make_unique<juce::Label>();
-    midiBindLabel_->setBounds(16, 556, 1000, 18);
+    midiBindLabel_->setBounds(mainX, 634, 900, 18);
     midiBindLabel_->setColour(juce::Label::textColourId, NAMTheme::textDim());
     addAndMakeVisible(*midiBindLabel_);
     midiBindLabel_->setText("no MIDI binds", juce::dontSendNotification);
 
     midiClearButton_ = std::make_unique<juce::TextButton>("Clear");
-    midiClearButton_->setBounds(1024, 554, 56, 22);
+    midiClearButton_->setBounds(mainX + 920, 632, 48, 22);
     addAndMakeVisible(*midiClearButton_);
     midiClearButton_->onClick = [this] { clearMidiBinds(); };
 
-    addSectionLabel("OUTPUT", 590);
-    // output panel: master / input gain / 3-band EQ / mute
-    auto makeSlider = [this](std::unique_ptr<juce::Slider>& s, int x, double min, double max,
-                             double value) {
-        s = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal,
-                                           juce::Slider::NoTextBox);
+    // --- Output ---
+    addSectionLabel("OUTPUT", mainX, 662);
+    auto makeSlider = [this, mainX](std::unique_ptr<juce::Slider>& s, int xOff, double min, double max, double value) {
+        s = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
         s->setRange(min, max, 0.1);
         s->setValue(value, juce::dontSendNotification);
-        s->setBounds(x, 610, 130, 18);
+        s->setBounds(mainX + xOff, 680, 140, 18);
         addAndMakeVisible(*s);
     };
-    auto makeOutLabel = [this](const juce::String& text, int x) {
+    auto makeOutLabel = [this, mainX](const juce::String& text, int xOff) {
         auto* l = new juce::Label();
         l->setText(text, juce::dontSendNotification);
-        l->setBounds(x, 608, 60, 20);
+        l->setBounds(mainX + xOff, 678, 60, 20);
         addAndMakeVisible(l);
+        outputLabels_.push_back(l);
     };
 
-    makeOutLabel("Master", 8);
-    makeSlider(masterSlider_, 70, -60.0, 0.0, 0.0);
+    makeOutLabel("Master", 0);
+    makeSlider(masterSlider_, 62, -60.0, 0.0, 0.0);
     masterSlider_->onValueChange = [this] {
         host_.output().setMasterVolume(static_cast<float>(masterSlider_->getValue()));
         saveSettings();
@@ -1567,29 +1656,29 @@ void NAMEditorApplication::buildUi()
         saveSettings();
     };
 
-    makeOutLabel("Bass", 412);
-    makeSlider(bassSlider_, 460, 0.0, 1.0, 0.5);
+    makeOutLabel("Bass", 420);
+    makeSlider(bassSlider_, 482, 0.0, 1.0, 0.5);
     bassSlider_->onValueChange = [this] {
         host_.output().setBass(static_cast<float>(bassSlider_->getValue()));
         saveSettings();
     };
 
-    makeOutLabel("Mid", 600);
-    makeSlider(midSlider_, 648, 0.0, 1.0, 0.5);
+    makeOutLabel("Mid", 630);
+    makeSlider(midSlider_, 692, 0.0, 1.0, 0.5);
     midSlider_->onValueChange = [this] {
         host_.output().setMiddle(static_cast<float>(midSlider_->getValue()));
         saveSettings();
     };
 
-    makeOutLabel("Treble", 788);
-    makeSlider(trebleSlider_, 836, 0.0, 1.0, 0.5);
+    makeOutLabel("Treble", 840);
+    makeSlider(trebleSlider_, 902, 0.0, 1.0, 0.5);
     trebleSlider_->onValueChange = [this] {
         host_.output().setTreble(static_cast<float>(trebleSlider_->getValue()));
         saveSettings();
     };
 
     muteToggle_ = std::make_unique<juce::ToggleButton>("Mute");
-    muteToggle_->setBounds(976, 606, 60, 22);
+    muteToggle_->setBounds(mainX + 1050, 678, 60, 22);
     addAndMakeVisible(*muteToggle_);
     muteToggle_->onClick = [this] {
         host_.output().setMute(muteToggle_->getToggleState());
@@ -1597,30 +1686,183 @@ void NAMEditorApplication::buildUi()
     };
 
     levelInLabel_ = std::make_unique<juce::Label>();
-    levelInLabel_->setBounds(1050, 608, 100, 18);
+    levelInLabel_->setBounds(mainX + 1120, 680, 100, 18);
     levelInLabel_->setColour(juce::Label::textColourId, NAMTheme::textDim());
     addAndMakeVisible(*levelInLabel_);
     levelOutLabel_ = std::make_unique<juce::Label>();
-    levelOutLabel_->setBounds(1150, 608, 100, 18);
+    levelOutLabel_->setBounds(mainX + 1220, 680, 100, 18);
     levelOutLabel_->setColour(juce::Label::textColourId, NAMTheme::textDim());
     addAndMakeVisible(*levelOutLabel_);
 
-    // chain view: read-only summary of what is actually loaded
+    // --- Chain summary ---
     chainLabel_ = std::make_unique<juce::TextEditor>();
     chainLabel_->setMultiLine(true);
     chainLabel_->setReadOnly(true);
     chainLabel_->setScrollbarsShown(true);
-    chainLabel_->setBounds(16, 640, 1240, 220);
+    chainLabel_->setBounds(mainX, 710, mainW, 170);
     addAndMakeVisible(*chainLabel_);
     chainLabel_->setText("(no preset loaded)", juce::dontSendNotification);
 
     refreshModelLibrary();
     rebuildAddModuleControls();
+    resized();
+}
+
+void NAMEditorApplication::resized()
+{
+    if (presetBox_ == nullptr) {
+        return;
+    }
+    const int width = getWidth();
+    const int height = getHeight();
+    const int sidebarW = juce::jlimit(236, 282, width / 5);
+    const int mainX = sidebarW + 24;
+    const int mainW = std::max(width - mainX - 18, 640);
+    const int headerY = 16;
+
+    if (presetListViewport_ != nullptr) {
+        presetListViewport_->setBounds(18, 84, std::max(sidebarW - 36, 180),
+                                       std::max(height - 170, 160));
+        statusLabel_->setBounds(20, std::max(height - 72, 120), sidebarW - 40, 18);
+        xrunLabel_->setBounds(20, std::max(height - 48, 140), sidebarW - 40, 18);
+    }
+
+    int x = mainX + 12;
+    presetBox_->setBounds(x, headerY, 250, 34);
+    x += 258;
+    loadButton_->setBounds(x, headerY, 60, 34);
+    x += 68;
+    delPresetButton_->setBounds(x, headerY, 48, 34);
+    x += 56;
+    presetNameBox_->setBounds(x, headerY, 160, 34);
+    x += 168;
+    savePresetButton_->setBounds(x, headerY, 64, 34);
+
+    const int audioY = 82;
+    x = mainX + 12;
+    deviceTypeBox_->setBounds(x, audioY, 126, 26);
+    x += 134;
+    deviceBox_->setBounds(x, audioY, 232, 26);
+    x += 240;
+    sampleRateBox_->setBounds(x, audioY, 86, 26);
+    x += 94;
+    bufferSizeBox_->setBounds(x, audioY, 82, 26);
+    x += 90;
+    applyAudioButton_->setBounds(x, audioY, 62, 26);
+    x += 70;
+    bypassToggle_->setBounds(x, audioY, 88, 26);
+
+    const int tunerY = 116;
+    tuningBox_->setBounds(mainX + 12, tunerY, 100, 26);
+    tunerMeter_->setBounds(mainX + 122, tunerY + 1, 300, 24);
+    const int tunerToggleX = mainX + mainW - 86;
+    tunerToggle_->setBounds(tunerToggleX, tunerY, 82, 26);
+    tunerLabel_->setBounds(mainX + 436, tunerY, std::max(tunerToggleX - mainX - 446, 150), 26);
+
+    const int addY = 150;
+    addGroupBox_->setBounds(mainX + 12, addY, 132, 26);
+    addModuleBox_->setBounds(mainX + 152, addY, 156, 26);
+    addAssetBox_->setBounds(mainX + 316, addY, std::max(mainW - 510, 150), 26);
+    addModuleButton_->setBounds(mainX + mainW - 182, addY, 62, 26);
+    importModelButton_->setBounds(mainX + mainW - 110, addY, 98, 26);
+
+    const int chainY = 184;
+    const int chainH = juce::jlimit(230, 360, height - 430);
+    chainPanelViewport_->setBounds(mainX, chainY, mainW, chainH);
+    if (chainPanelContent_ != nullptr) {
+        chainPanelContent_->setSize(
+            std::max(chainPanelContent_->getWidth(), std::max(mainW - 12, 720)),
+            chainPanelContent_->getHeight());
+    }
+
+    const int bottomY = chainY + chainH + 12;
+    const int sceneLabelY = bottomY;
+    const int sceneY = bottomY + 18;
+    const int sceneWidth = std::max(mainW - 500, 240);
+    sceneBar_->setBounds(mainX + 12, sceneY, sceneWidth, 28);
+    sceneNameBox_->setBounds(mainX + sceneWidth + 22, sceneY, 126, 28);
+    sceneSaveButton_->setBounds(mainX + sceneWidth + 156, sceneY, 60, 28);
+    sceneLearnButton_->setBounds(mainX + sceneWidth + 224, sceneY, 76, 28);
+    sceneLabel_->setBounds(mainX + sceneWidth + 310, sceneY, std::max(mainW - sceneWidth - 322, 80), 28);
+    midiBindLabel_->setBounds(mainX + 12, bottomY + 52, std::max(mainW - 100, 250), 20);
+    midiClearButton_->setBounds(mainX + mainW - 76, bottomY + 50, 64, 24);
+
+    const int outputY = bottomY + 82;
+    const int outputStart = mainX + 12;
+    const int outputWidth = std::max(mainW - 100, 500);
+    const int blockW = std::max((outputWidth - 12) / 5, 92);
+    juce::Slider* sliders[] = {masterSlider_.get(), inputGainSlider_.get(), bassSlider_.get(),
+                               midSlider_.get(), trebleSlider_.get()};
+    for (int i = 0; i < 5; ++i) {
+        const int bx = outputStart + i * blockW;
+        outputLabels_[static_cast<std::size_t>(i)]->setBounds(bx, outputY + 1, 40, 20);
+        sliders[i]->setBounds(bx + 44, outputY + 1, std::max(blockW - 50, 42), 20);
+    }
+    muteToggle_->setBounds(mainX + mainW - 84, outputY - 1, 78, 26);
+    levelInLabel_->setBounds(mainX + mainW - 170, outputY + 26, 78, 18);
+    levelOutLabel_->setBounds(mainX + mainW - 84, outputY + 26, 78, 18);
+
+    chainLabel_->setBounds(mainX, outputY + 48, mainW, std::max(height - outputY - 60, 40));
+
+    for (juce::Label* label : sectionLabels_) {
+        const juce::String text = label->getText();
+        if (text == "PRESETS") {
+            label->setBounds(20, 56, sidebarW - 40, 18);
+        } else if (text == "AUDIO") {
+            label->setBounds(mainX + 12, 64, 120, 14);
+        } else if (text == "TUNER") {
+            label->setBounds(mainX + 436, 102, 80, 14);
+        } else if (text == "ADD MODULE") {
+            label->setBounds(mainX + 12, 134, 140, 14);
+        } else if (text == "SCENE") {
+            label->setBounds(mainX + 12, sceneLabelY, 120, 14);
+        } else if (text == "OUTPUT") {
+            label->setBounds(mainX + 12, outputY - 18, 120, 14);
+        }
+    }
 }
 
 void NAMEditorApplication::paint(juce::Graphics& g)
 {
     g.fillAll(NAMTheme::bg());
+    const int sidebarW = juce::jlimit(236, 282, getWidth() / 5);
+    const int mainX = sidebarW + 24;
+    const int mainW = std::max(getWidth() - mainX - 18, 640);
+    const int chainY = 184;
+    const int chainH = juce::jlimit(230, 360, getHeight() - 430);
+    const int bottomY = chainY + chainH + 12;
+
+    auto panel = [&g](juce::Rectangle<int> bounds, juce::Colour colour, float radius) {
+        g.setColour(colour);
+        g.fillRoundedRectangle(bounds.toFloat(), radius);
+        g.setColour(NAMTheme::panelBorder());
+        g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), radius, 1.0f);
+    };
+    panel({12, 12, sidebarW - 24, getHeight() - 24}, NAMTheme::panel(), 10.0f);
+    panel({mainX, 12, mainW, 52}, NAMTheme::panel(), 10.0f);
+    panel({mainX, 70, mainW, 102}, NAMTheme::panel(), 10.0f);
+    panel({mainX, chainY, mainW, chainH}, NAMTheme::panel(), 10.0f);
+    panel({mainX, bottomY, mainW, std::max(getHeight() - bottomY - 12, 70)}, NAMTheme::panel(), 10.0f);
+
+    g.setColour(NAMTheme::accent());
+    g.fillRoundedRectangle(static_cast<float>(mainX + 14), 57.0f, 54.0f, 2.0f, 1.0f);
+    g.setFont(juce::Font(juce::FontOptions().withHeight(12.0f).withStyleFlags(juce::Font::bold)));
+    g.setColour(NAMTheme::textBright());
+    g.drawText("NAMFX / EDITOR", mainX + 14, 25, 180, 18, juce::Justification::left);
+    g.setColour(NAMTheme::accent());
+    g.fillEllipse(static_cast<float>(mainX + mainW - 86), 32.0f, 7.0f, 7.0f);
+    g.setColour(NAMTheme::textDim());
+    g.setFont(juce::Font(juce::FontOptions().withHeight(11.0f)));
+    g.drawText("AUDIO READY", mainX + mainW - 72, 26, 62, 18, juce::Justification::right);
+
+    g.setColour(NAMTheme::textDim());
+    g.setFont(juce::Font(juce::FontOptions().withHeight(10.0f).withStyleFlags(juce::Font::bold)));
+    g.drawText("DRIVER", mainX + 12, 73, 100, 12, juce::Justification::left);
+    g.drawText("DEVICE", mainX + 146, 73, 120, 12, juce::Justification::left);
+    g.drawText("RATE", mainX + 386, 73, 70, 12, juce::Justification::left);
+    g.drawText("BUFFER", mainX + 476, 73, 70, 12, juce::Justification::left);
+    g.drawText("TUNING", mainX + 12, 107, 100, 12, juce::Justification::left);
+    g.drawText("SIGNAL CHAIN", mainX + 16, chainY + 10, 150, 14, juce::Justification::left);
 }
 
 } // namespace desktop

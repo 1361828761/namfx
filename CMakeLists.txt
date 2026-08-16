@@ -16,6 +16,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(NAMFX_BUILD_TESTS "Build unit tests" ON)
 option(NAMFX_BUILD_TOOLS "Build tools" ON)
 option(NAMFX_BUILD_DESKTOP "Build the JUCE desktop editor (needs JUCE_DIR)" ON)
+option(NAMFX_BUILD_WEBUI "Build the WebUI host (HTTP + SSE control plane)" ON)
+option(NAMFX_BUILD_WASM "Build the browser audio runtime (requires Emscripten)" OFF)
 
 enable_testing()
 
@@ -76,4 +78,12 @@ endif()
 
 if(NAMFX_BUILD_DESKTOP)
     add_subdirectory(desktop)
+endif()
+
+if(NAMFX_BUILD_WEBUI)
+    add_subdirectory(webui)
+endif()
+
+if(NAMFX_BUILD_WASM)
+    add_subdirectory(webui/wasm)
 endif()

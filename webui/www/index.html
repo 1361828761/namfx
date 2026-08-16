@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080b10">
+<title>NAMFX Control Surface</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<a class="skip-link" href="#workspace">跳到工作区</a>
+<div id="app" class="app">
+  <header id="titlebar" class="titlebar">
+    <div class="tb-brand">
+      <span class="tb-logo" aria-hidden="true"><i></i></span>
+      <span class="tb-name">NAMFX</span>
+      <span class="tb-ver">CONTROL SURFACE</span>
+    </div>
+    <div class="tb-context">
+      <span class="tb-context-mark"></span>
+      <span>音色编辑器</span>
+      <span class="tb-slash">/</span>
+      <span class="tb-muted">WEB UI</span>
+    </div>
+    <div class="tb-drag" id="tb-drag" title="拖动窗口"></div>
+    <div class="tb-right">
+      <span id="conn-dot" class="conn-dot"></span>
+      <span id="conn-text" class="conn-text">连接中</span>
+      <div class="win-controls" id="win-controls">
+        <button class="wc" data-wc="min" title="最小化">−</button>
+        <button class="wc" data-wc="max" title="最大化">□</button>
+        <button class="wc wc-close" data-wc="close" title="关闭">×</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="appbar" aria-label="全局控制">
+    <div class="ab-preset" title="当前预设">
+      <span class="ab-kicker">CURRENT PRESET</span>
+      <span id="ab-preset-label" class="pp-label">--</span>
+      <span id="ab-preset-name" class="pp-name">未加载</span>
+      <span id="ab-dirty" class="pp-dirty hidden" title="有未保存修改"></span>
+    </div>
+    <div class="ab-divider"></div>
+    <div class="ab-group ab-ab" aria-label="A/B 对比">
+      <button id="ab-a" class="ab-btn" title="切换到 A；未建立时存入当前音色 (1)">A</button>
+      <button class="ab-store" data-action="copy-ab" data-ab="A" title="重新存入当前音色到 A">存</button>
+      <button id="ab-b" class="ab-btn" title="切换到 B；未建立时存入当前音色 (2)">B</button>
+      <button class="ab-store" data-action="copy-ab" data-ab="B" title="重新存入当前音色到 B">存</button>
+    </div>
+    <div class="ab-group ab-history" aria-label="历史">
+      <button id="ab-undo" class="ab-btn glyph" title="撤销 (Ctrl+Z)">↶</button>
+      <button id="ab-redo" class="ab-btn glyph" title="重做 (Ctrl+Y)">↷</button>
+    </div>
+    <button id="ab-tuner" class="ab-btn ab-tuner" title="打开调音器 (T)"><span class="button-dot"></span>调音器</button>
+    <button id="ab-audio" class="ab-btn ab-audio hidden" title="启动浏览器音频">启动音频</button>
+    <div class="ab-divider"></div>
+    <label id="ab-master-bypass" class="ab-toggle" title="总旁路：整链跳过，干音直通">
+      <input type="checkbox">总旁路
+    </label>
+    <label id="ab-mute" class="ab-toggle warn" title="输出静音 (M)">
+      <input type="checkbox">静音
+    </label>
+    <div class="ab-readout-spacer"></div>
+    <div class="ab-levels" aria-label="输入输出电平">
+      <div class="level-label">IN</div>
+      <div class="meter"><div class="bar" id="meter-in"></div></div>
+      <span class="meter-db" id="meter-in-db">-inf</span>
+      <div class="level-label out">OUT</div>
+      <div class="meter"><div class="bar" id="meter-out"></div></div>
+      <span class="meter-db" id="meter-out-db">-inf</span>
+    </div>
+    <div class="ab-perf" id="ab-perf" title="剩余性能（引擎档位 Full/Limited/Minimal）">
+      <span class="perf-caption">HEADROOM</span>
+      <div class="perf-bar"><div class="fill" id="perf-fill"></div></div>
+      <span class="perf-text" id="perf-text">--%</span>
+    </div>
+    <button id="ab-lock" class="ab-icon" title="演出锁定视图">LOCK</button>
+    <button id="ab-settings" class="ab-icon" title="设置">SET</button>
+  </nav>
+
+  <div id="scenes" class="scenes" aria-label="场景"></div>
+
+  <main id="workspace" class="main">
+    <aside class="preset-sidebar" aria-label="预设索引">
+      <div class="ps-header">
+        <div>
+          <span class="ps-eyebrow">LIBRARY / PRESETS</span>
+          <span class="ps-title">预设索引</span>
+        </div>
+        <span id="ps-count" class="ps-count"></span>
+      </div>
+      <div class="ps-search">
+        <span class="search-mark">/</span>
+        <input id="ps-search" type="search" placeholder="搜索预设…" aria-label="搜索预设">
+        <span class="search-key">CTRL K</span>
+      </div>
+      <div class="ps-body" id="ps-body"></div>
+      <div class="ps-footer">
+        <div class="ps-save-row">
+          <input id="ps-new-name" type="text" placeholder="新预设名" title="预设名（不允许 / \\ .）">
+          <button id="ps-save" class="primary-action">保存</button>
+        </div>
+        <div class="ps-io-row">
+          <button id="ps-export">导出 JSON</button>
+          <button id="ps-import">导入 JSON</button>
+          <input id="ps-import-file" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+    </aside>
+
+    <section class="content">
+      <section class="chain-wrap" aria-label="音色链">
+        <div class="chain-header">
+          <div class="section-heading">
+            <span class="section-index">01</span>
+            <div>
+              <span class="ch-title">音色链</span>
+              <span class="ch-en">SIGNAL FLOW</span>
+            </div>
+          </div>
+          <div class="chain-legend">
+            <span><i class="legend-dot live"></i>处理</span>
+            <span><i class="legend-dot bypass"></i>旁路</span>
+               <span class="chain-tip">点击模块编辑 · + 插入 · 拖动模块交换或移入空槽</span>
+            <div class="chain-view-switch" role="group" aria-label="音色链显示方式">
+              <button data-action="chain-view" data-view="cards" title="卡片视图">卡片</button>
+              <button data-action="chain-view" data-view="tiles" title="图标视图">图标</button>
+            </div>
+          </div>
+        </div>
+        <div class="chain-rail-label"><span>INPUT</span><span>OUTPUT</span></div>
+        <div id="chain" class="chain"></div>
+      </section>
+
+      <section class="lower" aria-label="编辑工作台">
+        <div class="lower-tabs" id="lower-tabs" role="tablist" aria-label="工作台页面">
+          <button data-tab="modules" class="active" role="tab">编辑 <span>EDIT</span></button>
+          <button data-tab="output" role="tab">演出 <span>PERFORM</span></button>
+          <button data-tab="library" role="tab">模型库 <span>LIBRARY</span></button>
+          <button data-tab="midi" role="tab">控制源 <span>MIDI</span></button>
+          <button data-tab="settings" role="tab">系统 <span>SETTINGS</span></button>
+        </div>
+        <div id="lower-body" class="lower-body"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span class="status-pulse"></span>
+    <span id="status-msg" class="sb-msg" role="status">就绪</span>
+    <span class="sb-spacer"></span>
+    <span id="status-xrun" class="sb-item"></span>
+    <span id="status-engine" class="sb-item"></span>
+  </footer>
+</div>
+
+<div id="tuner-overlay" class="overlay hidden">
+  <div class="ov-header">
+    <div><span class="ov-index">UTILITY / 01</span><span class="ov-title">调音器 TUNER</span></div>
+    <button class="ov-close" id="tuner-close">× 关闭 (T)</button>
+  </div>
+  <div id="tuner-note" class="tuner-note">-</div>
+  <div id="tuner-sub" class="tuner-sub">无信号（弹响一根弦）</div>
+  <div class="tuner-meter">
+    <svg class="tm-ticks" viewBox="0 0 560 100" preserveAspectRatio="none" aria-hidden="true">
+      <g class="tick-muted">
+        <line x1="40" y1="88" x2="40" y2="70"/><line x1="150" y1="88" x2="150" y2="78"/>
+        <line x1="280" y1="88" x2="280" y2="64"/><line x1="410" y1="88" x2="410" y2="78"/>
+        <line x1="520" y1="88" x2="520" y2="70"/>
+      </g>
+      <g class="tick-center"><line x1="265" y1="88" x2="265" y2="72"/><line x1="295" y1="88" x2="295" y2="72"/></g>
+    </svg>
+    <div id="tuner-needle" class="tm-needle"></div>
+    <div class="tm-center"></div>
+    <div class="tm-scale"><span>-50</span><span>-25</span><span>0</span><span>+25</span><span>+50 ct</span></div>
+  </div>
+  <div class="tuner-opts">
+    <select id="tuner-tuning" title="调弦"><option value="0">EADGBE 标准</option><option value="1">Drop D</option></select>
+    <label class="ab-toggle"><input type="checkbox" id="tuner-mute" checked>调音时静音</label>
+    <label class="ab-toggle" id="tuner-sig-wrap" title="演示模式：模拟输入信号"><input type="checkbox" id="tuner-sig">模拟信号（演示）</label>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script src="js/catalog.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/wasm_engine.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

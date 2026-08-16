@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "name": "Tape Echo",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "dly.tape",
+      "params": { "time": 0.5, "echo": 0.55, "tone": 0.45, "level": 0.5 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}

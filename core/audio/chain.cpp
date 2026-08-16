@@ -26,9 +26,11 @@ int msToSamples(double sampleRate, double ms)
 
 } // namespace
 
-Chain::Chain(std::vector<SlotDef> slots, std::shared_ptr<const ModuleRegistry> registry, int maxSlots)
+Chain::Chain(std::vector<SlotDef> slots, std::shared_ptr<const ModuleRegistry> registry,
+             int maxSlots, AssetLoader assetLoader)
     : registry_(std::move(registry))
     , maxSlots_(std::max(maxSlots, kMinSlots))
+    , assetLoader_(std::move(assetLoader))
 {
     if (!registry_) {
         throw std::runtime_error("chain: null module registry");
@@ -52,9 +54,14 @@ Chain::Chain(std::vector<SlotDef> slots, std::shared_ptr<const ModuleRegistry> r
         runtime.def = std::move(def);
         runtime.specs = registry_->specsFor(runtime.def.moduleId);
         runtime.module = registry_->create(runtime.def.moduleId);
-        if (!runtime.def.file.empty() && !runtime.module->loadAsset(runtime.def.file)) {
-            throw std::runtime_error("chain: failed to load asset '" + runtime.def.file
-                                     + "' for module '" + runtime.def.moduleId + "'");
+        if (!runtime.def.file.empty()) {
+            const bool loaded = assetLoader_
+                                    ? assetLoader_(*runtime.module, runtime.def)
+                                    : runtime.module->loadAsset(runtime.def.file);
+            if (!loaded) {
+                throw std::runtime_error("chain: failed to load asset '" + runtime.def.file
+                                         + "' for module '" + runtime.def.moduleId + "'");
+            }
         }
         runtime.store = std::make_unique<ParamStore>(runtime.specs);
         for (const ParamInit& init : runtime.def.params) {

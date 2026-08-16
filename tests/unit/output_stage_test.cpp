@@ -96,6 +96,31 @@ TEST_CASE("output stage global EQ shapes the tone")
     REQUIRE(bassUp > bassDown * 2.0f); // +6 vs -6 dB at the shelf corner
 }
 
+TEST_CASE("output stage global cuts remove sub and high frequencies")
+{
+    const std::vector<float> low = sine(48000, 80.0, 48000.0, 0.2f);
+    const std::vector<float> high = sine(48000, 8000.0, 48000.0, 0.2f);
+    std::vector<float> out(low.size(), 0.0f);
+    std::vector<float> outR(low.size(), 0.0f);
+
+    OutputStage lowCut;
+    lowCut.prepare(48000.0, 64);
+    lowCut.setLowCut(200.0f);
+    processChunks(lowCut, low, out, outR);
+    const float lowCutPeak = peak(out, 9600);
+    lowCut.reset();
+    processChunks(lowCut, high, out, outR);
+    const float highPassHighPeak = peak(out, 9600);
+
+    OutputStage highCut;
+    highCut.prepare(48000.0, 64);
+    highCut.setHighCut(4000.0f);
+    processChunks(highCut, high, out, outR);
+    const float highCutPeak = peak(out, 9600);
+    REQUIRE(lowCutPeak < highPassHighPeak * 0.35f);
+    REQUIRE(highCutPeak < 0.2f * 0.35f);
+}
+
 TEST_CASE("output stage keeps stereo channels symmetric")
 {
     OutputStage stage;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace namfx {
@@ -32,6 +34,16 @@ public:
     virtual bool loadAsset(const std::string& path)
     {
         (void)path;
+        return false;
+    }
+
+    // browser/WASM path: load the asset from an in-memory byte buffer
+    // instead of a filesystem path; called on the load path, never from
+    // the audio callback
+    virtual bool loadAssetBytes(const std::uint8_t* data, std::size_t size)
+    {
+        (void)data;
+        (void)size;
         return false;
     }
 

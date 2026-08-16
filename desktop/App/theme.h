@@ -5,19 +5,21 @@
 namespace namfx {
 namespace desktop {
 
-// Dark editor theme (web-UI-like): near-black background, raised panels,
-// one accent colour, muted section labels. Applied app-wide.
 class NAMTheme : public juce::LookAndFeel_V4 {
 public:
     NAMTheme();
 
-    static juce::Colour bg() { return juce::Colour(0xff14161a); }
-    static juce::Colour panel() { return juce::Colour(0xff1e2128); }
-    static juce::Colour panelHi() { return juce::Colour(0xff2a2e38); }
-    static juce::Colour accent() { return juce::Colour(0xff4cc9f0); }
-    static juce::Colour accentDim() { return juce::Colour(0xff2a6f8a); }
-    static juce::Colour text() { return juce::Colour(0xffd7dde6); }
-    static juce::Colour textDim() { return juce::Colour(0xff7a8494); }
+    static juce::Colour bg() { return juce::Colour(0xff0d1116); }
+    static juce::Colour panel() { return juce::Colour(0xff151b23); }
+    static juce::Colour panelHi() { return juce::Colour(0xff222b36); }
+    static juce::Colour panelBorder() { return juce::Colour(0xff303b49); }
+    static juce::Colour accent() { return juce::Colour(0xffb9ed4b); }
+    static juce::Colour accentDim() { return juce::Colour(0xff6f9f32); }
+    static juce::Colour accentHover() { return juce::Colour(0xffd3ff78); }
+    static juce::Colour text() { return juce::Colour(0xffe7edf4); }
+    static juce::Colour textDim() { return juce::Colour(0xff8290a0); }
+    static juce::Colour textBright() { return juce::Colour(0xffffffff); }
+    static juce::Colour danger() { return juce::Colour(0xffe74c3c); }
 
     void drawButtonBackground(juce::Graphics&, juce::Button&, const juce::Colour&,
                               bool isHighlighted, bool isDown) override;
@@ -30,6 +32,12 @@ public:
                           bool shouldDrawButtonAsDown) override;
     void drawTextEditorOutline(juce::Graphics&, int width, int height,
                                juce::TextEditor&) override;
+    void drawScrollBar(juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height,
+                       bool isScrollbarVertical, int thumbStartPosition, int thumbSize,
+                       bool isMouseOver, bool isMouseDown);
+
+    juce::Font getComboBoxFont(juce::ComboBox&) override;
+    juce::Font getLabelFont(juce::Label&) override;
 };
 
 } // namespace desktop

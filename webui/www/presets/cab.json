@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "name": "Cab IR",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "cab",
+      "impl": "ir",
+      "module": "cab.ir",
+      "file": "irs/cab_clean.wav",
+      "params": { "gain": 0.5 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}

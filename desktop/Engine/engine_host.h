@@ -74,13 +74,21 @@ public:
     // model/IR path for nam.amp / cab.ir (may be empty for dsp modules)
     bool addModuleToChain(const std::string& moduleId, const std::string& assetFile,
                           std::string& error);
+    // insert a module at chain position atIndex (0-based; clamps into range)
+    bool insertModuleToChain(int atIndex, const std::string& moduleId,
+                             const std::string& assetFile, std::string& error);
     bool removeModuleFromChain(int slot, std::string& error);
     bool moveModuleTo(int slot, int dstIndex, std::string& error); // drag reorder
+    bool swapModules(int slotA, int slotB, std::string& error); // drag swap
     bool moveModule(int slot, int direction, std::string& error);  // up/down buttons
     std::vector<std::string> moduleIds() const;
 
     // save the live chain as a user preset (schema 1 JSON) into dir
     bool savePreset(const std::string& name, const std::string& dir, std::string& error);
+
+    // serialize the live chain + scene bank as a schema 1 preset JSON string
+    // (WebUI host shell: undo/redo and A/B buffers are shell-side concepts)
+    std::string exportPresetJson(const std::string& name) const;
 
     // structured chain readout for the edit panel
     struct SlotInfo {

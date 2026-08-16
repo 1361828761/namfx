@@ -1,0 +1,49 @@
+{
+  "name": "namfx-webui",
+  "version": 2,
+  "palette": {
+    "bg0": "#070a0e",
+    "bg1": "#0b1016",
+    "bg2": "#101821",
+    "bg3": "#16222d",
+    "line": "#202d39",
+    "lineStrong": "#30404e",
+    "amber": "#e7a34b",
+    "amberHi": "#ffd083",
+    "led": "#8bd3a3",
+    "blue": "#7bb8d6",
+    "red": "#e16b69",
+    "text": "#dbe4eb",
+    "textDim": "#81909d",
+    "textBright": "#f6f8fa",
+    "knob": "#243441",
+    "knobArc": "#0a0e13",
+    "knobTick": "#dbe4eb"
+  },
+  "type": {
+    "display": "Rajdhani",
+    "displayWeights": [500, 600, 700],
+    "ui": "Inter",
+    "uiWeights": [400, 500, 600, 700],
+    "cjkFallback": ["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "sans-serif"]
+  },
+  "layout": {
+    "titleBarH": 34,
+    "appBarH": 52,
+    "sceneStripH": 38,
+    "statusBarH": 24,
+    "presetSidebarW": 248,
+    "categoryRailW": 144,
+    "moduleListW": 252,
+    "chainCellW": 184,
+    "chainCellH": 122,
+    "radiusPanel": 4,
+    "radiusControl": 3
+  },
+  "semantics": {
+    "focus": "amber",
+    "active": "led",
+    "danger": "red",
+    "idle": "textDim"
+  }
+}

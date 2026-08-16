@@ -23,6 +23,7 @@ public:
     ChannelMode channelMode() const override { return ChannelMode::MonoInMonoOut; }
 
     bool loadAsset(const std::string& path) override;
+    bool loadAssetBytes(const std::uint8_t* data, std::size_t size) override;
     void prepare(double sampleRate, int maxBlockSize) override;
     void process(const float* inL, const float* inR, float* outL, float* outR, int n) override;
     void reset() override;

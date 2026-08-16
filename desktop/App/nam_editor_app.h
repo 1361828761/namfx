@@ -29,10 +29,9 @@ class NAMEditorApplication;
 class ChainPanelContent : public juce::Component {
 public:
     void paint(juce::Graphics&) override;
-    // row boundaries (end y of each module block), filled by the panel
-    // rebuild so drop-position mapping is per-block, not per-child
+    // card boundaries (end x of each module card), filled by the panel rebuild
     void setRowBounds(const std::vector<int>& bounds) { rowBounds_ = bounds; }
-    void setDropIndexAt(int y);
+    void setDropIndexAt(int x);
     int takeDropIndex();
     int dropIndex() const { return dropIndex_; }
 
@@ -55,6 +54,29 @@ private:
     NAMEditorApplication& app_;
     ChainPanelContent& content_;
     bool dragging_ = false;
+};
+
+class PresetListContent : public juce::Component {
+public:
+    struct Item {
+        juce::String name;
+        bool isSection = false;
+        int fileIndex = -1;
+    };
+    void setItems(const std::vector<Item>& items) { items_ = items; repaint(); }
+    void setSelectedIndex(int idx) { selected_ = idx; repaint(); }
+    int selectedIndex() const { return selected_; }
+    std::function<void(int)> onSelect;
+
+    void paint(juce::Graphics& g) override;
+    void mouseDown(const juce::MouseEvent& e) override;
+    static constexpr int kRowH = 36;
+
+    int hitTestRow(int y) const;
+
+private:
+    std::vector<Item> items_;
+    int selected_ = -1;
 };
 
 // MIDI input front-end: converts JUCE MIDI messages to engine events and
@@ -84,6 +106,7 @@ public:
 
     // Component: content pane of the MainWindow
     void paint(juce::Graphics&) override;
+    void resized() override;
 
     // chain drag reorder callback (used by GripLabel / ChainPanelContent)
     void reorderChainByDrag(int srcSlot, int dstIndex);
@@ -108,7 +131,8 @@ private:
     void refreshModuleList();
     void refreshAssetList();
     void refreshModelLibrary();
-    void addSectionLabel(const juce::String& text, int y);
+    void addSectionLabel(const juce::String& text, int x, int y);
+    void rebuildPresetSidebar();
     void saveUserPreset();
     void rebuildSceneBar();
     juce::String bindingSummary() const;
@@ -143,6 +167,8 @@ private:
     std::unique_ptr<juce::TextEditor> presetNameBox_;
     std::unique_ptr<juce::TextButton> savePresetButton_;
     std::vector<juce::File> presetFiles_; // demo + user presets (combo ids)
+    std::unique_ptr<juce::Viewport> presetListViewport_;
+    std::unique_ptr<PresetListContent> presetListContent_;
     // chain editing (M5c)
     std::unique_ptr<juce::ComboBox> addGroupBox_;   // module category
     std::unique_ptr<juce::ComboBox> addModuleBox_;  // module within category
@@ -197,6 +223,8 @@ private:
     std::unique_ptr<TunerMeter> tunerMeter_;
     std::unique_ptr<juce::Label> tunerLabel_;
     std::unique_ptr<juce::Label> sceneLabel_;
+    std::vector<juce::Label*> sectionLabels_;
+    std::vector<juce::Label*> outputLabels_;
     juce::File demoDir_;
     juce::File userPresetDir_;
     std::vector<juce::File> modelFiles_; // scanned NAM model library

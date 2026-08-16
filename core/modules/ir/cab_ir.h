@@ -27,8 +27,11 @@ public:
     ChannelMode channelMode() const override { return ChannelMode::MonoInMonoOut; }
     void setParameter(const std::string& id, float value) override;
     bool loadAsset(const std::string& path) override;
+    bool loadAssetBytes(const std::uint8_t* data, std::size_t size) override;
 
 private:
+    bool adoptWav(const ir::WavData& wav);
+
     bool prepared_ = false;
 
     // asset state (set by loadAsset, load path)

@@ -38,6 +38,25 @@
       }
     },
     {
+      "name": "wasm-debug",
+      "displayName": "Browser Audio (WASM)",
+      "description": "Emscripten DSP runtime for the browser WebUI",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/wasm-debug",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "NAMFX_BUILD_TESTS": "OFF",
+        "NAMFX_BUILD_TOOLS": "OFF",
+        "NAMFX_BUILD_DESKTOP": "OFF",
+        "NAMFX_BUILD_WEBUI": "OFF",
+        "NAMFX_BUILD_WASM": "ON",
+        "CMAKE_MAKE_PROGRAM": "D:/study/vc/vsiualstudio/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe",
+        "FETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON": "${sourceDir}/build/nlohmann-v3.11.3",
+        "FETCHCONTENT_SOURCE_DIR_WAVEDIGITALFILTERS": "${sourceDir}/build/debug/_deps/wavedigitalfilters-src"
+      }
+    },
+    {
       "name": "ci-win-debug",
       "displayName": "Debug (Windows CI)",
       "description": "Debug build on GitHub windows-latest (VS 2026)",
@@ -72,6 +91,10 @@
     {
       "name": "release-linux",
       "configurePreset": "release-linux"
+    },
+    {
+      "name": "wasm-debug",
+      "configurePreset": "wasm-debug"
     },
     {
       "name": "ci-win-debug",

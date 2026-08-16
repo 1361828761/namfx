@@ -4,6 +4,7 @@
 #include "modules/param_spec.h"
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -36,8 +37,13 @@ struct AtomicMix {
 
 class Chain {
 public:
+    // assetLoader (optional): custom asset resolution hook used instead of
+    // ModuleBase::loadAsset(path) when non-null (browser/WASM in-memory
+    // assets). Called on the load path, never from the audio callback.
+    using AssetLoader = std::function<bool(ModuleBase& module, const SlotDef& slot)>;
+
     Chain(std::vector<SlotDef> slots, std::shared_ptr<const ModuleRegistry> registry,
-          int maxSlots = 8);
+          int maxSlots = 8, AssetLoader assetLoader = nullptr);
 
     ~Chain();
     Chain(Chain&&) noexcept;
@@ -106,6 +112,7 @@ private:
 
     std::vector<SlotRuntime> slots_;
     std::shared_ptr<const ModuleRegistry> registry_;
+    AssetLoader assetLoader_;
     int maxSlots_ = kMinSlots;
     double sampleRate_ = 48000.0;
     int maxBlock_ = 0;

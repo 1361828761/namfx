@@ -91,3 +91,70 @@ if(MSVC)
     # codepage (GBK) would misread the bytes
     target_compile_options(namfx_editor PRIVATE /Z7 /W1 /utf-8)
 endif()
+
+# ---------------------------------------------------------------------------
+# namfx_webview: the WebUI as the product GUI (WebView2) with a native audio
+# backend. Same engine, same HTTP control plane (webui/server/web_host.cpp),
+# browser shell instead of a hand-built JUCE editor.
+# ---------------------------------------------------------------------------
+if(NOT DEFINED WEBVIEW2_SDK_DIR)
+    set(WEBVIEW2_SDK_DIR "C:/Users/xmj/AppData/Local/Temp/opencode/webview2-sdk")
+endif()
+
+juce_add_gui_app(namfx_webview
+    PRODUCT_NAME "NAMFX"
+    VERSION "0.2.0"
+    COMPANY_NAME "namfx"
+    ICON_BIG ""
+    ICON_SMALL ""
+    NEEDS_WEB_BROWSER FALSE
+    NEEDS_HELP FALSE
+)
+
+target_sources(namfx_webview PRIVATE
+    App/webview_app.cpp
+    Engine/engine_audio_source.cpp
+    Engine/engine_host.cpp
+    Engine/native_audio_backend.cpp
+    ${CMAKE_SOURCE_DIR}/webui/server/web_host.cpp
+)
+
+target_compile_definitions(namfx_webview PRIVATE
+    JUCE_USE_WIN_WEBVIEW2=1
+    JUCE_ASIO=1
+    NAMFX_WEB_EMBEDDED=1
+    "NAMFX_WEBUI_DIR=\"${CMAKE_SOURCE_DIR}/webui/www\""
+    "NAMFX_DEMO_DIR=\"${CMAKE_SOURCE_DIR}/core/preset/demo\""
+    "NAMFX_NAM_DIR=\"${CMAKE_SOURCE_DIR}/nam\""
+    "NAMFX_IR_DIR=\"${CMAKE_SOURCE_DIR}/ir\""
+    "NAMFX_MODELS_DIR=\"${CMAKE_SOURCE_DIR}/modles\""
+)
+
+target_include_directories(namfx_webview PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/..
+    ${WEBVIEW2_SDK_DIR}/build/native/include
+)
+
+target_link_libraries(namfx_webview PRIVATE
+    namfx_core
+    nam_core
+    namfx_warnings
+    wavedigitalfilters
+    nlohmann_json::nlohmann_json
+    juce::juce_gui_extra
+    juce::juce_audio_utils
+    juce::juce_gui_basics
+    juce::juce_core
+)
+
+if(MSVC)
+    target_compile_options(namfx_webview PRIVATE /Z7 /W1 /utf-8)
+    target_compile_definitions(namfx_webview PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_link_libraries(namfx_webview PRIVATE winmm ws2_32)
+    # WebView2Loader.dll must sit next to the exe (JUCE loads it dynamically)
+    add_custom_command(TARGET namfx_webview POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${WEBVIEW2_SDK_DIR}/runtimes/win-x64/native/WebView2Loader.dll"
+            "$<TARGET_FILE_DIR:namfx_webview>/WebView2Loader.dll"
+    )
+endif()

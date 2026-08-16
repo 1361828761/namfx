@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "name": "Transparent",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "od.transparent",
+      "params": { "gain": 0.5, "treble": 0.5, "level": 0.5 },
+      "bypass": false,
+      "mix": 1.0
+    },
+    {
+      "slot": 1,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "gain",
+      "params": { "gain": 0.0 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}

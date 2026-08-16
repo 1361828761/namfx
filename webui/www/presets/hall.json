@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "name": "Hall Reverb",
+  "chain": [
+    {
+      "slot": 0,
+      "category": "pedal",
+      "impl": "dsp",
+      "module": "rvb.hall",
+      "params": { "room": 0.6, "damp": 0.45, "mix": 0.3 },
+      "bypass": false,
+      "mix": 1.0
+    }
+  ],
+  "scenes": []
+}

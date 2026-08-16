@@ -7,12 +7,16 @@
 #include "get_dsp.h"
 #include "slimmable.h"
 
+#include "json.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
-#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -117,9 +121,24 @@ NamAmpModule::~NamAmpModule() = default;
 
 bool NamAmpModule::loadAsset(const std::string& path)
 {
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) {
+        return false;
+    }
+    std::ostringstream text;
+    text << stream.rdbuf();
+    const std::string bytes = text.str();
+    return loadAssetBytes(reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size());
+}
+
+bool NamAmpModule::loadAssetBytes(const std::uint8_t* data, std::size_t size)
+{
     try {
         impl_ = std::make_unique<Impl>();
-        impl_->dsp = nam::get_dsp(std::filesystem::path(path));
+        // .nam files are JSON; the json overload is pure memory (no fs)
+        const nlohmann::json config = nlohmann::json::parse(
+            reinterpret_cast<const char*>(data), reinterpret_cast<const char*>(data) + size);
+        impl_->dsp = nam::get_dsp(config);
         const double expected = impl_->dsp->GetExpectedSampleRate();
         impl_->modelRate = expected > 0.0 ? expected : 48000.0;
         impl_->slimmable = dynamic_cast<nam::SlimmableModel*>(impl_->dsp.get()) != nullptr;
