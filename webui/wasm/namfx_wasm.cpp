@@ -251,7 +251,7 @@ NAMFX_WASM_EXPORT int namfx_wasm_load_preset_json(namfx_wasm* opaque, const char
             }
             return module.loadAssetBytes(it->second.data(), it->second.size());
         };
-        auto next = std::make_unique<Chain>(std::move(slots), engine.registry, 8, assetLoader);
+        auto next = std::make_unique<Chain>(std::move(slots), engine.registry, 12, assetLoader);
         next->prepare(engine.sample_rate, engine.max_block_size);
         engine.chain = std::move(next);
         engine.error.clear();

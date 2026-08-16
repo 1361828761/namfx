@@ -14,6 +14,7 @@ NativeAudioBackend::~NativeAudioBackend()
 
 bool NativeAudioBackend::initialize(std::string& error)
 {
+    std::lock_guard<std::mutex> lock(mu_);
     if (initialized_) {
         return true;
     }
@@ -40,6 +41,8 @@ bool NativeAudioBackend::initialize(std::string& error)
             deviceManager_.setCurrentAudioDeviceType(types[i]->getTypeName(), false);
             auto* type = deviceManager_.getCurrentDeviceTypeObject();
             if (type != nullptr) {
+                // true = probe which devices can actually be opened; this
+                // runs once at startup, not on every state snapshot
                 const juce::StringArray names = type->getDeviceNames(true);
                 if (!names.isEmpty()) {
                     juce::AudioDeviceManager::AudioDeviceSetup setup;
@@ -58,23 +61,21 @@ bool NativeAudioBackend::initialize(std::string& error)
         }
     }
 
-    const web::AudioBackendState current = state();
+    web::AudioBackendState current;
+    refreshStateLocked(current);
     if (!current.active && lastError_.empty()) {
         lastError_ = "没有可用的音频设备";
     }
     error = lastError_;
-    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr) {
-        pendingUnmute_ = juce::Time::getMillisecondCounter() + 1500;
-        startTimer(100);
-    } else {
-        host_.output().setMute(false);
-    }
+    // delayed un-mute after the device warms up; the host ticker drives
+    // applyPendingUnmuteLocked() every 100 ms
+    pendingUnmute_ = juce::Time::getMillisecondCounter() + 1500;
     return current.active;
 }
 
 void NativeAudioBackend::shutdown()
 {
-    stopTimer();
+    std::lock_guard<std::mutex> lock(mu_);
     pendingUnmute_ = 0;
     if (!initialized_) {
         return;
@@ -88,19 +89,26 @@ void NativeAudioBackend::shutdown()
 
 web::AudioBackendState NativeAudioBackend::state() const
 {
+    // JUCE's device manager API is non-const by design; the backend
+    // interface is const. All state is mutex-guarded, so the const_cast
+    // is safe and only undoes interface constness.
+    auto* self = const_cast<NativeAudioBackend*>(this);
+    std::lock_guard<std::mutex> lock(self->mu_);
+    self->applyPendingUnmuteLocked();
     web::AudioBackendState out;
-    refreshState(out);
+    self->refreshStateLocked(out);
     return out;
 }
 
-void NativeAudioBackend::refreshState(web::AudioBackendState& out) const
+void NativeAudioBackend::refreshStateLocked(web::AudioBackendState& out)
 {
     const auto& types = deviceManager_.getAvailableDeviceTypes();
     const juce::String currentType = deviceManager_.getCurrentAudioDeviceType();
     for (int i = 0; i < types.size(); ++i) {
         web::AudioDeviceTypeInfo info;
         info.name = types[i]->getTypeName().toStdString();
-        const juce::StringArray names = types[i]->getDeviceNames(true);
+        // false = list device names without opening each one (snapshot path)
+        const juce::StringArray names = types[i]->getDeviceNames(false);
         for (const juce::String& name : names) {
             info.devices.push_back(name.toStdString());
         }
@@ -119,6 +127,7 @@ void NativeAudioBackend::refreshState(web::AudioBackendState& out) const
 bool NativeAudioBackend::apply(const std::string& type, const std::string& device,
                                double sampleRate, int blockSize, std::string& error)
 {
+    std::lock_guard<std::mutex> lock(mu_);
     if (!initialized_) {
         error = "音频后端未初始化";
         return false;
@@ -141,22 +150,24 @@ bool NativeAudioBackend::apply(const std::string& type, const std::string& devic
         return false;
     }
     lastError_.clear();
-    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr) {
-        pendingUnmute_ = juce::Time::getMillisecondCounter() + 1500;
-        startTimer(100);
-    } else {
-        host_.output().setMute(false);
-    }
+    // never touch JUCE timers from the HTTP thread: record the deadline and
+    // let the host ticker perform the un-mute
+    pendingUnmute_ = juce::Time::getMillisecondCounter() + 1500;
     error.clear();
     return true;
 }
 
-void NativeAudioBackend::timerCallback()
+void NativeAudioBackend::tick()
+{
+    std::lock_guard<std::mutex> lock(mu_);
+    applyPendingUnmuteLocked();
+}
+
+void NativeAudioBackend::applyPendingUnmuteLocked()
 {
     if (pendingUnmute_ != 0 && juce::Time::getMillisecondCounter() >= pendingUnmute_) {
         pendingUnmute_ = 0;
         host_.output().setMute(false);
-        stopTimer();
     }
 }
 

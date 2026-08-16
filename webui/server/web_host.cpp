@@ -42,6 +42,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <io.h>
 #include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
 #endif
@@ -102,13 +103,40 @@ bool readFile(const std::string& path, std::string& out)
 
 bool writeFile(const std::string& path, const std::string& data)
 {
-    std::ofstream f(path, std::ios::binary);
+    // atomic write protocol (docs/EXECUTION.md 已知坑): temp -> flush ->
+    // rename; never leave a half-written file at the target path
+    const std::string tmp = path + ".tmp";
+#ifdef _WIN32
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (f == nullptr) {
+        return false;
+    }
+    const std::size_t written = std::fwrite(data.data(), 1, data.size(), f);
+    const int commitResult = _commit(_fileno(f));
+    std::fclose(f);
+    if (written != data.size() || commitResult != 0) {
+        std::remove(tmp.c_str());
+        return false;
+    }
+#else
+    std::ofstream f(tmp, std::ios::binary);
     if (!f) {
         return false;
     }
     f.write(data.data(), static_cast<std::streamsize>(data.size()));
     f.close();
-    return static_cast<bool>(f);
+    if (!f) {
+        std::remove(tmp.c_str());
+        return false;
+    }
+#endif
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        std::remove(tmp.c_str());
+        return false;
+    }
+    return true;
 }
 
 bool ensureDir(const std::string& path)
@@ -868,12 +896,25 @@ public:
         clients_.erase(std::remove(clients_.begin(), clients_.end(), c), clients_.end());
     }
 
+    // mark every SSE client dead so their connection threads exit; the
+    // shell calls this before destroying the host / stopping the server
+    void stopClients()
+    {
+        std::lock_guard<std::mutex> lock(evMu_);
+        for (const auto& c : clients_) {
+            c->alive = false;
+        }
+    }
+
     // ---- background tick: levels / tuner / perf at 10 Hz ----
     void startTicker()
     {
         ticker_ = std::thread([this] {
             while (running_.load()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if (audioBackend_ != nullptr) {
+                    audioBackend_->tick();
+                }
                 json j = json::object();
                 j["tick"] = true;
                 j["state"] = snapshot(true);
@@ -1567,8 +1608,14 @@ void webHostStopTicker(WebHost& host)
     host.stopTicker();
 }
 
+void webHostStopClients(WebHost& host)
+{
+    host.stopClients();
+}
+
 void webHostDestroy(WebHost* host)
 {
+    host->stopClients();
     delete host;
 }
 

@@ -29,6 +29,7 @@ WebHost* webHostCreate(EngineHost* host, const char* wwwDir, const char* demoDir
                        AudioBackend* audioBackend);
 void webHostStartTicker(WebHost& host);
 void webHostStopTicker(WebHost& host);
+void webHostStopClients(WebHost& host);
 void webHostDestroy(WebHost* host);
 
 } // namespace web
@@ -173,6 +174,11 @@ private:
         if (server_ == nullptr) {
             return;
         }
+        // 1) unblock SSE connection threads (they sleep-wait on client liveness)
+        if (webHost_ != nullptr) {
+            namfx::web::webHostStopClients(*webHost_);
+        }
+        // 2) stop the listener and wait for every connection thread to exit
         server_->stop();
         if (webHost_ != nullptr) {
             namfx::web::webHostStopTicker(*webHost_);

@@ -190,7 +190,7 @@ bool EngineHost::loadPresetText(const std::string& jsonText, const std::string& 
         }
         return false;
     }
-    auto chain = std::make_unique<audio::Chain>(preset.chain, registry_);
+    auto chain = std::make_unique<audio::Chain>(preset.chain, registry_, kMaxChainSlots);
     chain->prepare(sampleRate_, blockSize_);
     chain->startFadeIn(); // swap eases in from dry: no pop on preset load
     {
@@ -337,7 +337,7 @@ std::string EngineHost::chainSummary() const
 bool EngineHost::rebuildChain(std::vector<audio::SlotDef> slots, std::string& error)
 {
     try {
-        auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_);
+        auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_, kMaxChainSlots);
         chain->prepare(sampleRate_, blockSize_);
         chain->startFadeIn(); // the swap eases in: no pop
         chain_ = chain.get();

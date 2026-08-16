@@ -29,6 +29,10 @@ public:
     virtual AudioBackendState state() const = 0;
     virtual bool apply(const std::string& type, const std::string& device,
                        double sampleRate, int blockSize, std::string& error) = 0;
+    // periodic control-plane heartbeat (host ticker): lets backends perform
+    // time-based work (e.g. delayed un-mute after a device switch) without
+    // their own timers/threads
+    virtual void tick() {}
 };
 
 } // namespace web

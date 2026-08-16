@@ -6,6 +6,7 @@
 // Audio-path red lines do not apply here (shell code, not core).
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -105,6 +106,14 @@ public:
         if (listener_.joinable()) {
             listener_.join();
         }
+        // connection threads are detached; wait for them to drain so the
+        // caller can safely destroy the handler (SSE streams exit once the
+        // host marks their clients dead)
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (activeConnections_.load(std::memory_order_relaxed) > 0
+               && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     }
 
 private:
@@ -149,6 +158,12 @@ private:
 
     void handleConnection(namfx_socket_t fd)
     {
+        struct ConnGuard {
+            std::atomic<int>& n;
+            explicit ConnGuard(std::atomic<int>& counter) : n(counter) { n.fetch_add(1); }
+            ~ConnGuard() { n.fetch_sub(1); }
+        };
+        ConnGuard guard(activeConnections_);
         HttpRequest req;
         if (!readRequest(fd, req)) {
             closeSocket(fd);
@@ -323,6 +338,7 @@ private:
 
     HttpHandler handler_;
     std::atomic<bool> running_{false};
+    std::atomic<int> activeConnections_{0};
     std::thread listener_;
 };
 
