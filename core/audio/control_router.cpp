@@ -123,21 +123,24 @@ void ControlRouter::setSourceValue(int sourceId, float value)
     sourceHeartbeat_[static_cast<std::size_t>(sourceId)].fetch_add(1, std::memory_order_relaxed);
 }
 
-bool ControlRouter::uiSet(const std::string& moduleId, const std::string& paramId, float value)
+bool ControlRouter::uiSet(int slot, const std::string& moduleId, const std::string& paramId,
+                          float value)
 {
     UiCommand cmd;
     cmd.key = makeKey(moduleId, paramId); // pre-built on the control thread
     cmd.moduleId = moduleId;
     cmd.paramId = paramId;
     cmd.value = value;
+    cmd.slot = slot;
     return uiQueue_.push(cmd);
 }
 
-bool ControlRouter::uiSetBypass(const std::string& moduleId, bool bypass)
+bool ControlRouter::uiSetBypass(int slot, const std::string& moduleId, bool bypass)
 {
     UiCommand cmd;
     cmd.moduleId = moduleId;
     cmd.value = bypass ? 1.0f : 0.0f;
+    cmd.slot = slot;
     cmd.isBypass = true;
     return uiQueue_.push(cmd);
 }
@@ -154,7 +157,8 @@ void ControlRouter::apply(Chain& chain, int frames)
     while (uiQueue_.pop(uiCmdBuf_)) {
         if (uiCmdBuf_.isBypass) {
             // bypass flips fade state: audio-thread only, like scene recall
-            const int slot = chain.slotIndexOf(uiCmdBuf_.moduleId);
+            const int slot = uiCmdBuf_.slot >= 0 ? uiCmdBuf_.slot
+                                                 : chain.slotIndexOf(uiCmdBuf_.moduleId);
             if (slot >= 0) {
                 chain.setBypassByIndex(slot, uiCmdBuf_.value != 0.0f);
             }
@@ -172,7 +176,8 @@ void ControlRouter::apply(Chain& chain, int frames)
                 }
             }
         }
-        const int slot = chain.slotIndexOf(uiCmdBuf_.moduleId);
+        const int slot = uiCmdBuf_.slot >= 0 ? uiCmdBuf_.slot
+                                             : chain.slotIndexOf(uiCmdBuf_.moduleId);
         if (slot >= 0) {
             try {
                 chain.setParamByIndex(slot, chain.paramIndexOf(slot, uiCmdBuf_.paramId),

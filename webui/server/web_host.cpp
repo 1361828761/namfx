@@ -502,12 +502,40 @@ public:
                     }
                     resetChainLayout();
                 }
+                // fixed-slot model: the ABC label decides the filename
+                // (e.g. "09A"); saving to a slot replaces whatever user
+                // preset currently occupies it
+                std::string label = cmd.value("label", "");
+                if (!label.empty()) {
+                    const bool valid = label.size() >= 3 && std::isdigit(static_cast<unsigned char>(label[0]))
+                        && std::isdigit(static_cast<unsigned char>(label[1]))
+                        && (label[2] == 'A' || label[2] == 'B' || label[2] == 'C');
+                    if (!valid) {
+                        return fail("槽位不合法（如 09A）");
+                    }
+                    for (const PresetEntry& x : presets_[1]) {
+                        if (x.label == label) {
+                            std::remove(joinPath(userPresetDir_, x.file).c_str());
+                        }
+                    }
+                    rescan();
+                }
                 if (!host_->savePreset(nm, userPresetDir_, error)) {
                     return fail("保存失败: " + error);
                 }
+                if (!label.empty()) {
+                    const std::string from = joinPath(userPresetDir_, nm + ".json");
+                    const std::string to = joinPath(userPresetDir_, label + "_" + nm + ".json");
+                    std::error_code ec;
+                    std::filesystem::rename(from, to, ec);
+                    if (ec) {
+                        std::remove(from.c_str());
+                        return fail("槽位写入失败");
+                    }
+                }
                 rescan();
                 PresetEntry e;
-                e.file = nm + ".json";
+                e.file = (label.empty() ? nm : label + "_" + nm) + ".json";
                 e.name = nm;
                 e.scope = "user";
                 auto it = std::find_if(presets_[1].begin(), presets_[1].end(),
@@ -517,7 +545,18 @@ public:
                               : it->label;
                 current_ = e;
                 dirty_ = false;
-                msg_ = "已保存预设 " + nm;
+                msg_ = "已保存预设 " + nm + (label.empty() ? "" : " → " + label);
+                return ok();
+            }
+            if (name == "loadEmpty") {
+                const std::string empty = "{\"schema\":1,\"name\":\"empty\",\"chain\":[],\"scenes\":[]}";
+                if (!host_->loadPresetText(empty, demoDir_, error)) {
+                    return fail("清空失败: " + error);
+                }
+                resetChainLayout();
+                current_.file.clear();
+                dirty_ = false;
+                msg_ = "已清空效果链（空预设槽）";
                 return ok();
             }
             if (name == "deletePreset") {
@@ -532,6 +571,11 @@ public:
                 }
                 rescan();
                 if (current_.file == file && current_.scope == "user") {
+                    // deleting the active preset empties the chain
+                    // (fixed-slot behavior: the slot becomes a blank slate)
+                    const std::string empty = "{\"schema\":1,\"name\":\"empty\",\"chain\":[],\"scenes\":[]}";
+                    host_->loadPresetText(empty, demoDir_, error);
+                    resetChainLayout();
                     current_.file.clear();
                 }
                 msg_ = "已删除预设 " + file;
@@ -544,13 +588,6 @@ public:
             }
             if (name == "addModule" || name == "insertModule") {
                 const std::string moduleId = cmd.value("moduleId", "");
-                // v1 单实例约定：引擎控制路由按模块 ID 寻址（slotIndexOf 取首例），
-                // 重复实例的参数会误路由到第一实例 —— 与 Mock 引擎一致，直接拒绝
-                for (const auto& info : host_->chainInfo()) {
-                    if (info.moduleId == moduleId) {
-                        return fail("该模块已在链中（v1 单实例约定）");
-                    }
-                }
                 std::string asset = cmd.value("asset", "");
                 if (!asset.empty()) {
                     asset = resolveAsset(asset, moduleId);
@@ -981,10 +1018,12 @@ public:
 private:
     void resetChainLayout()
     {
-        chainLayout_.assign(12, {});
+        // layout holds ENGINE slot ids (-1 = empty visual slot); slot ids
+        // are unique even for repeated module instances, unlike module ids
+        chainLayout_.assign(12, -1);
         for (const auto& info : host_->chainInfo()) {
             if (info.slot >= 0 && info.slot < static_cast<int>(chainLayout_.size())) {
-                chainLayout_[static_cast<std::size_t>(info.slot)] = info.moduleId;
+                chainLayout_[static_cast<std::size_t>(info.slot)] = info.slot;
             }
         }
     }
@@ -993,19 +1032,19 @@ private:
     {
         if (source < 0 || target < 0 || source >= static_cast<int>(chainLayout_.size())
             || target >= static_cast<int>(chainLayout_.size()) || source == target
-            || chainLayout_[source].empty() || !chainLayout_[target].empty()) {
+            || chainLayout_[source] < 0 || chainLayout_[target] >= 0) {
             resetChainLayout();
             return;
         }
-        chainLayout_[target] = std::move(chainLayout_[source]);
-        chainLayout_[source].clear();
+        chainLayout_[target] = chainLayout_[source];
+        chainLayout_[source] = -1;
     }
 
     void swapChainLayout(int source, int target)
     {
         if (source < 0 || target < 0 || source >= static_cast<int>(chainLayout_.size())
             || target >= static_cast<int>(chainLayout_.size()) || source == target
-            || chainLayout_[source].empty() || chainLayout_[target].empty()) {
+            || chainLayout_[source] < 0 || chainLayout_[target] < 0) {
             resetChainLayout();
             return;
         }
@@ -1395,7 +1434,7 @@ private:
 
     std::vector<PresetEntry> presets_[2]; // 0 = demo, 1 = user
     PresetEntry current_;
-    std::vector<std::string> chainLayout_ = std::vector<std::string>(12);
+    std::vector<int> chainLayout_ = std::vector<int>(12, -1);
     std::vector<ModelInfo> models_;
     std::vector<std::string> irs_;
     mutable std::vector<std::string> modelPaths_;

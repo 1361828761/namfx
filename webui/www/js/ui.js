@@ -301,61 +301,61 @@ const UI = {
     wrap.innerHTML = html;
   },
 
-  /* ---------- 预设侧边栏 ---------- */
+  /* ---------- 预设侧边栏（固定 50 组 × ABC = 150 槽） ---------- */
   renderSidebar() {
     const s = Store.state;
     const body = this.els['ps-body'];
-    this.els['ps-count'].textContent = String(s.presets.demo.length + s.presets.user.length) + ' 个';
-    if (!s.presets.demo.length && !s.presets.user.length) {
-      body.innerHTML = '<div class="ps-empty">暂无预设<br>点击下方「保存预设」创建第一个</div>';
-      return;
-    }
+    const bank = new Map();
+    for (const p of (s.presets.demo || [])) bank.set(p.label, { ...p, scope: 'demo', removable: false });
+    for (const p of (s.presets.user || [])) bank.set(p.label, { ...p, scope: 'user', removable: true });
+    this.els['ps-count'].textContent = bank.size + '/150';
     const collapsed = s.collapsedGroups || {};
+    const query = (this.els['ps-search'] ? this.els['ps-search'].value : '').trim().toLowerCase();
     const badge = (preset) => {
       const b = [];
       if (preset.kind === 'nam') b.push('<span class="pi-badge nam">NAM</span>');
       if (preset.kind === 'ir') b.push('<span class="pi-badge ir">IR</span>');
       return b.join('');
     };
-    const all = [
-      ...s.presets.demo.map(p => ({ ...p, scope: 'demo', removable: false })),
-      ...s.presets.user.map(p => ({ ...p, scope: 'user', removable: true })),
-    ];
-    const query = (this.els['ps-search'] ? this.els['ps-search'].value : '').trim().toLowerCase();
-    const visible = query
-      ? all.filter(p => (p.name + ' ' + p.label).toLowerCase().indexOf(query) >= 0)
-      : all;
-    const groups = new Map();
-    for (const p of visible) {
-      const g = p.label.slice(0, 2);
-      if (!groups.has(g)) groups.set(g, []);
-      groups.get(g).push(p);
-    }
-    if (!visible.length) {
-      body.innerHTML = '<div class="ps-empty">没有匹配的预设<br>换一个名称或编号试试</div>';
-      return;
-    }
-    let html = '';
-    for (const [g, items] of groups) {
-      const isCollapsed = collapsed[g];
-      html += `<div class="preset-group">
-        <div class="pg-head ${isCollapsed ? 'collapsed' : ''}" data-action="toggle-group" data-group="${g}">
-          <span class="pg-arrow">&#x25BC;</span><span>${g}</span>
-          <span class="pg-count">${items.length}/3</span>
+    const slotHTML = (label) => {
+      const p = bank.get(label);
+      const sel = s.currentPreset && s.currentPreset.label === label;
+      const pick = s.presetSel === label && !sel;
+      if (p) {
+        const matched = !query || (p.name + ' ' + label).toLowerCase().indexOf(query) >= 0;
+        if (!matched) return '';
+        return `<div class="preset-item ${sel ? 'sel' : ''}" data-action="load-preset"
+          data-file="${U.esc(p.file)}" data-scope="${p.scope}" data-label="${label}" title="${U.esc(p.name)}">
+          <span class="pi-label">${label}</span>
+          <span class="pi-name">${U.esc(p.name)}</span>
+          ${badge(p)}
+          ${p.removable ? `<button class="pi-del" data-action="del-preset" data-file="${U.esc(p.file)}" title="删除">&#x2715;</button>` : ''}
         </div>`;
-      if (!isCollapsed) {
-        for (const p of items) {
-          const sel = s.currentPreset && s.currentPreset.file === p.file && s.currentPreset.scope === p.scope;
-          html += `<div class="preset-item ${sel ? 'sel' : ''}" data-action="load-preset"
-            data-file="${U.esc(p.file)}" data-scope="${p.scope}" title="${U.esc(p.name)}">
-            <span class="pi-label">${p.label}</span>
-            <span class="pi-name">${U.esc(p.name)}</span>
-            ${badge(p)}
-            ${p.removable ? `<button class="pi-del" data-action="del-preset" data-file="${U.esc(p.file)}" title="删除">&#x2715;</button>` : ''}
-          </div>`;
-        }
       }
+      if (query && label.indexOf(query) < 0) return '';
+      return `<div class="preset-item empty ${pick ? 'pick' : ''}" data-action="pick-empty" data-label="${label}"
+        title="空槽：编辑音色后点保存写入此槽">
+        <span class="pi-label">${label}</span>
+        <span class="pi-name">${pick ? '→ 保存到此' : '空'}</span>
+      </div>`;
+    };
+    let html = '';
+    for (let g = 1; g <= 50; g++) {
+      const gg = String(g).padStart(2, '0');
+      const items = ['A', 'B', 'C'].map(ch => slotHTML(gg + ch)).filter(Boolean).join('');
+      if (!items) continue;
+      const isCollapsed = collapsed[gg];
+      html += `<div class="preset-group">
+        <div class="pg-head ${isCollapsed ? 'collapsed' : ''}" data-action="toggle-group" data-group="${gg}">
+          <span class="pg-arrow">&#x25BC;</span><span>${gg}</span>
+          <span class="pg-count">${bank.has(gg + 'A') ? 1 : 0}${bank.has(gg + 'B') ? 1 : 0}${bank.has(gg + 'C') ? 1 : 0}/3</span>
+        </div>`;
+      if (!isCollapsed) html += items;
       html += '</div>';
+    }
+    if (!html) {
+      body.innerHTML = '<div class="ps-empty">没有匹配的预设<br>点击空槽编辑音色后保存</div>';
+      return;
     }
     body.innerHTML = html;
   },
@@ -802,8 +802,18 @@ const UI = {
     const input = this.els['ps-new-name'];
     const name = input.value.trim();
     if (!name) { this.toast('先输入预设名', 'error'); input.focus(); return; }
-    this.send('savePreset', { name }).then((r) => {
-      if (r && r.ok) { input.value = ''; this.toast('已保存预设 ' + name, 'ok'); }
+    const s = Store.state;
+    const label = s.presetSel || (s.currentPreset ? s.currentPreset.label : null);
+    if (!label) {
+      this.toast('先在左侧点选一个槽位（空槽或已有预设）再保存', 'error');
+      return;
+    }
+    this.send('savePreset', { name, label }).then((r) => {
+      if (r && r.ok) {
+        input.value = '';
+        Store.patch({ presetSel: label });
+        this.toast('已保存到 ' + label + ' · ' + name, 'ok');
+      }
     });
   },
 
@@ -888,8 +898,16 @@ const UI = {
     const index = action.dataset.index != null ? parseInt(action.dataset.index, 10) : null;
     switch (a) {
       case 'load-preset':
-        this.send('loadPreset', { file, scope });
+        this.send('loadPreset', { file, scope }).then((r) => {
+          if (r && r.ok && action.dataset.label) Store.patch({ presetSel: action.dataset.label });
+        });
         break;
+      case 'pick-empty': {
+        const label = action.dataset.label;
+        Store.patch({ presetSel: label });
+        this.toast('已选中空槽 ' + label + '：编辑音色后点「保存」写入');
+        break;
+      }
       case 'copy-ab': {
         const which = action.dataset.ab;
         this.send(which === 'A' ? 'copyToA' : 'copyToB').then((r) => {
@@ -1206,8 +1224,19 @@ const UI = {
     const chainEl = this.els['chain'];
     const visualSlot = parseInt(grip.dataset.grip != null ? grip.dataset.grip : grip.dataset.slot, 10);
     const engineSlot = parseInt(grip.dataset.engineSlot != null ? grip.dataset.engineSlot : grip.dataset.slot, 10);
-    Store.patch({ dragSlot: visualSlot, dropIndex: null, dropSlot: null });
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragging = false;
     const move = (ev) => {
+      // click/long-press with tiny jitter must stay a click: only engage
+      // the drag once the pointer clearly moves away from the press point
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) {
+        return;
+      }
+      if (!dragging) {
+        dragging = true;
+        Store.patch({ dragSlot: visualSlot, dropIndex: null, dropSlot: null });
+      }
       const cells = [...chainEl.querySelectorAll('.chain-cell[data-slot]')];
       let closest = null;
       let closestDistance = Infinity;
@@ -1229,6 +1258,7 @@ const UI = {
     const up = () => {
       document.removeEventListener('pointermove', move);
       document.removeEventListener('pointerup', up);
+      if (!dragging) return;
       const target = Store.state.dropSlot;
       const source = Store.state.chain.find(c => (c.uiSlot != null ? c.uiSlot : c.slot) === visualSlot);
       const targetItem = Store.state.chain.find(c => (c.uiSlot != null ? c.uiSlot : c.slot) === target);

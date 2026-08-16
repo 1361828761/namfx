@@ -77,7 +77,7 @@ function defaultState() {
     presets: { demo: [], user: [] },
     currentPreset: null,        // {file, name, label, scope}
     chain: [],
-    chainLayout: Array(12).fill(null),
+    chainLayout: Array(12).fill(-1),
     dirty: false,
     // UI 态
     selectedSlot: -1,
@@ -86,6 +86,7 @@ function defaultState() {
     railSel: 'dist',
     chainView: typeof location !== 'undefined' && new URLSearchParams(location.search).get('view') === 'tiles' ? 'tiles' : 'cards',
     sceneSel: null,
+    presetSel: null,
     collapsedGroups: {},
     dragSlot: null,
     dropIndex: null,
@@ -165,11 +166,9 @@ class MockEngine {
   _applyPresetJson(json, p, recordUndo = true, resetCompare = false) {
     const s = Store.state;
     const chain = [];
-    const seen = new Set();
     for (const slot of (json.chain || [])) {
       const mod = NAMFX_CATALOG.moduleById(slot.module);
-      if (!mod || seen.has(slot.module)) continue; // v1 单实例
-      seen.add(slot.module);
+      if (!mod) continue;
       const params = {};
       for (const spec of mod.specs) {
         params[spec.id] = slot.params && slot.params[spec.id] != null ? slot.params[spec.id] : spec.def;
@@ -234,9 +233,10 @@ class MockEngine {
               json = await r.json();
             }
              this._applyPresetJson(json, p, true, true);
-          } catch (e) {
-            return { ok: false, error: '预设文件读取失败' };
-          }
+             s.presetSel = p.label;
+           } catch (e) {
+             return { ok: false, error: '预设文件读取失败' };
+           }
           return { ok: true };
         }
         case 'savePreset': {
@@ -250,16 +250,19 @@ class MockEngine {
           } else {
             json = JSON.parse(this._snapshotJson(nm));
           }
-          const file = nm + '.json';
-          const p = { file, name: nm, kind: presetKind(json), label: NAMFX_PRESET_LABEL(file, s.presets.user.length), scope: 'user' };
-          s.presets.user = s.presets.user.filter(x => x.file !== file);
+          const label = String(args.label || '').toUpperCase();
+          const file = (label ? label + '_' : '') + nm + '.json';
+          const p = { file, name: nm, kind: presetKind(json), label: label || NAMFX_PRESET_LABEL(file, s.presets.user.length), scope: 'user' };
+          s.presets.user = s.presets.user.filter(x => x.file !== file && !(label && x.label === label));
           s.presets.user.push(p);
           s.presets.user.sort((a, b) => a.file.localeCompare(b.file));
           this._presetJson.set('user:' + file, JSON.stringify(json));
+          if (label) this._presetJson.delete('user:' + file.replace(label + '_' + nm, nm));
           normalizePresetLabels(s);
           this._applyPresetJson(json, p);
           s.currentPreset = p;
-          s.msg = '已保存预设 ' + nm;
+          s.presetSel = p.label;
+          s.msg = '已保存预设 ' + nm + (label ? ' → ' + label : '');
           return { ok: true };
         }
         case 'deletePreset': {
@@ -269,9 +272,22 @@ class MockEngine {
           if ((args.scope || 'user') === 'demo') return { ok: false, error: '出厂预设不可删除' };
           list.splice(idx, 1);
           this._presetJson.delete((args.scope || 'user') + ':' + args.file);
-          if (s.currentPreset && s.currentPreset.file === args.file) s.currentPreset = null;
+          if (s.currentPreset && s.currentPreset.file === args.file) {
+            s.currentPreset = null;
+            this._applyPresetJson({ schema: 1, chain: [], scenes: [] }, null);
+            s.dirty = false;
+            s.msg = '已删除预设并清空效果链';
+          } else {
+            s.msg = '已删除预设 ' + args.file;
+          }
           normalizePresetLabels(s);
-          s.msg = '已删除预设 ' + args.file;
+          return { ok: true };
+        }
+        case 'loadEmpty': {
+          this._applyPresetJson({ schema: 1, chain: [], scenes: [] }, null);
+          s.currentPreset = null;
+          s.dirty = false;
+          s.msg = '已清空效果链（空预设槽）';
           return { ok: true };
         }
         case 'exportPreset':
@@ -281,9 +297,6 @@ class MockEngine {
           if (s.chain.length >= 12) return { ok: false, error: '音色链已达到 12 个槽位上限' };
           const mod = NAMFX_CATALOG.moduleById(args.moduleId);
           if (!mod) return { ok: false, error: '未知模块 ' + args.moduleId };
-          if (s.chain.some(c => c.module === args.moduleId)) {
-            return { ok: false, error: '该模块已在链中（v1 单实例约定）' };
-          }
           if (mod.asset !== 'none' && !args.asset) return { ok: false, error: '请先选择 ' + (mod.asset === 'nam' ? 'NAM 模型' : 'IR 文件') };
           const params = {};
           for (const spec of mod.specs) params[spec.id] = spec.def;
@@ -346,9 +359,9 @@ class MockEngine {
           s.chain.splice(dst, 0, m);
           s.chain.forEach((c, i) => { c.slot = i; });
           if (args.visualSource != null && args.visualTarget != null
-              && s.chainLayout[args.visualSource] && !s.chainLayout[args.visualTarget]) {
+              && s.chainLayout[args.visualSource] >= 0 && s.chainLayout[args.visualTarget] < 0) {
             s.chainLayout[args.visualTarget] = s.chainLayout[args.visualSource];
-            s.chainLayout[args.visualSource] = null;
+            s.chainLayout[args.visualSource] = -1;
             this._applyLayoutToChain();
           } else {
             this._setLayoutFromChain();
@@ -531,11 +544,11 @@ class MockEngine {
 
   _setLayoutFromChain() {
     const s = Store.state;
-    s.chainLayout = Array(12).fill(null);
+    s.chainLayout = Array(12).fill(-1);
     s.chain.forEach((c, i) => {
       c.engineSlot = c.slot;
       c.uiSlot = i;
-      if (i < 12) s.chainLayout[i] = c.module;
+      if (i < 12) s.chainLayout[i] = c.slot;
     });
   }
 
@@ -543,7 +556,7 @@ class MockEngine {
     const s = Store.state;
     for (const c of s.chain) {
       c.engineSlot = c.slot;
-      const pos = s.chainLayout.indexOf(c.module);
+      const pos = s.chainLayout.indexOf(c.slot);
       c.uiSlot = pos >= 0 ? pos : c.slot;
     }
   }
@@ -646,17 +659,18 @@ function normalizeState(prev, data) {
     if (c.asset == null) c.asset = '';
     c.engineSlot = c.slot;
   }
-  const moduleIds = (data.chain || []).map(c => c.module);
+  const engineSlots = (data.chain || []).map(c => c.slot);
   let layout = Array.isArray(data.chainLayout) && data.chainLayout.length === 12
-    ? data.chainLayout.slice(0, 12) : [];
-  const layoutIds = layout.filter(Boolean);
-  if (layoutIds.length !== moduleIds.length || layoutIds.some(id => !moduleIds.includes(id))) {
-    layout = Array(12).fill(null);
-    moduleIds.forEach((id, index) => { if (index < 12) layout[index] = id; });
+    ? data.chainLayout.slice(0, 12).map(v => (typeof v === 'number' && v >= 0 ? v : -1)) : [];
+  const layoutSlots = layout.filter(v => v >= 0);
+  if (layoutSlots.length !== engineSlots.length
+      || layoutSlots.some(s => !engineSlots.includes(s))) {
+    layout = Array(12).fill(-1);
+    engineSlots.forEach((slot, index) => { if (index < 12) layout[index] = slot; });
   }
   data.chainLayout = layout;
   for (const c of (data.chain || [])) {
-    const uiSlot = layout.indexOf(c.module);
+    const uiSlot = layout.indexOf(c.slot);
     c.uiSlot = uiSlot >= 0 ? uiSlot : c.engineSlot;
   }
   if (!data.library) data.library = { models: [], irs: [] };
@@ -673,6 +687,8 @@ function normalizeState(prev, data) {
       if (prev[k] !== undefined) data[k] = prev[k];
     }
   }
+  // fixed-slot bank: user presets override demo presets on the same ABC label
+  if (prev && prev.presetSel !== undefined) data.presetSel = prev.presetSel;
   if (!data.ab.a && !data.ab.b) data.abActive = null;
   return data;
 }

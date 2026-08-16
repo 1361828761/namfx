@@ -48,13 +48,23 @@ public:
     void setSourceValue(int sourceId, float value);
 
     // UI parameter write: enqueued to the audio thread; bound params keep
-    // their value queued (deep-1) until the source is released
-    bool uiSet(const std::string& moduleId, const std::string& paramId, float value);
+    // their value queued (deep-1) until the source is released.
+    // slot >= 0 addresses a specific chain slot (multi-instance support);
+    // slot == -1 falls back to the first slot that hosts moduleId
+    bool uiSet(int slot, const std::string& moduleId, const std::string& paramId, float value);
+    bool uiSet(const std::string& moduleId, const std::string& paramId, float value)
+    {
+        return uiSet(-1, moduleId, paramId, value);
+    }
 
     // UI bypass write: same queue, applied at the block boundary on the
     // audio thread (bypass flips module fade state, so it must not be
     // touched from the control thread)
-    bool uiSetBypass(const std::string& moduleId, bool bypass);
+    bool uiSetBypass(int slot, const std::string& moduleId, bool bypass);
+    bool uiSetBypass(const std::string& moduleId, bool bypass)
+    {
+        return uiSetBypass(-1, moduleId, bypass);
+    }
 
     // ---- audio thread (block boundary, after SceneEngine::apply) --------
     void apply(Chain& chain, int frames);
@@ -79,6 +89,7 @@ private:
         std::string moduleId;
         std::string paramId;
         float value = 0.0f;
+        int slot = -1;       // >= 0: exact chain slot; -1: first moduleId slot
         bool isBypass = false;
     };
     struct Pending {

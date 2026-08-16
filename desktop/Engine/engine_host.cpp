@@ -190,7 +190,11 @@ bool EngineHost::loadPresetText(const std::string& jsonText, const std::string& 
         }
         return false;
     }
-    auto chain = std::make_unique<audio::Chain>(preset.chain, registry_, kMaxChainSlots);
+    auto slots = preset.chain;
+    for (std::size_t i = 0; i < slots.size(); ++i) {
+        slots[i].slot = static_cast<int>(i);
+    }
+    auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_, kMaxChainSlots);
     chain->prepare(sampleRate_, blockSize_);
     chain->startFadeIn(); // swap eases in from dry: no pop on preset load
     {
@@ -276,7 +280,7 @@ bool EngineHost::uiSetParam(int slot, const std::string& paramId, float value)
     } catch (const std::out_of_range&) {
         return false;
     }
-    return router_.uiSet(moduleId, paramId, value);
+    return router_.uiSet(slot, moduleId, paramId, value);
 }
 
 bool EngineHost::uiSetMix(int slot, float mix)
@@ -306,7 +310,7 @@ bool EngineHost::uiSetBypass(int slot, bool bypass)
         return false;
     }
     // fade state is audio-thread owned: queue the write like any UI command
-    return router_.uiSetBypass(moduleId, bypass);
+    return router_.uiSetBypass(slot, moduleId, bypass);
 }
 
 std::string EngineHost::chainSummary() const
@@ -337,6 +341,12 @@ std::string EngineHost::chainSummary() const
 bool EngineHost::rebuildChain(std::vector<audio::SlotDef> slots, std::string& error)
 {
     try {
+        // renumber slots contiguously: chainInfo and the UI look slots up
+        // by index 0..N-1, so a removal that leaves 0,2,3,... would drop
+        // every module after the first gap
+        for (std::size_t i = 0; i < slots.size(); ++i) {
+            slots[i].slot = static_cast<int>(i);
+        }
         auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_, kMaxChainSlots);
         chain->prepare(sampleRate_, blockSize_);
         chain->startFadeIn(); // the swap eases in: no pop
