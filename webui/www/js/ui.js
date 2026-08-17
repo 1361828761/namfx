@@ -986,8 +986,12 @@ const UI = {
         break;
       case 'quick-add': {
         const args = { moduleId };
-        if (Store.state.insertIndex >= 0) {
-          args.index = Store.state.insertIndex;
+        const at = Store.state.insertIndex;
+        if (at >= 0) {
+          const engineIndex = Store.state.chain.filter((item) =>
+            (item.uiSlot != null ? item.uiSlot : item.slot) < at).length;
+          args.index = engineIndex;
+          args.visualTarget = at;
           this.send('insertModule', args);
         } else {
           this.send('addModule', args);
@@ -1011,7 +1015,15 @@ const UI = {
         if (!assetName) { this.toast('请先选择资产', 'error'); break; }
         const at = Store.state.insertIndex;
         const args = { moduleId: mid, asset: assetName };
-        this.send(at >= 0 ? 'insertModule' : 'addModule', at >= 0 ? { ...args, index: at } : args);
+        if (at >= 0) {
+          const engineIndex = Store.state.chain.filter((item) =>
+            (item.uiSlot != null ? item.uiSlot : item.slot) < at).length;
+          args.index = engineIndex;
+          args.visualTarget = at;
+          this.send('insertModule', args);
+        } else {
+          this.send('addModule', args);
+        }
         break;
       }
       case 'import-asset': {
@@ -1027,9 +1039,11 @@ const UI = {
         this.send('moveModule', { slot, direction: dir });
         break;
       }
-      case 'del-slot':
-        this.send('removeModule', { slot });
+      case 'del-slot': {
+        const visual = action.dataset.slot != null ? parseInt(action.dataset.slot, 10) : undefined;
+        this.send('removeModule', visual !== undefined ? { slot, visualTarget: visual } : { slot });
         break;
+      }
       case 'add-amp':
       case 'add-cab': {
         const mid = a === 'add-amp' ? 'amp.nam' : 'cab.ir';

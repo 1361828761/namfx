@@ -605,7 +605,25 @@ public:
                 if (!okFlag) {
                     return fail("添加失败: " + error);
                 }
-                resetChainLayout();
+                if (cmd.contains("visualTarget")) {
+                    // stable-slot insertion: place the new instance at the
+                    // requested visual slot instead of re-densifying
+                    const int vt = cmd.value("visualTarget", -1);
+                    std::map<std::string, int> counts;
+                    for (const std::string& id : chainLayout_) {
+                        if (!id.empty()) {
+                            const std::size_t hash = id.find('#');
+                            if (hash != std::string::npos) {
+                                ++counts[id.substr(0, hash)];
+                            }
+                        }
+                    }
+                    const std::string instId =
+                        moduleId + "#" + std::to_string(counts[moduleId] + 1);
+                    placeChainLayout(vt, instId);
+                } else {
+                    resetChainLayout();
+                }
                 dirty_ = true;
                 msg_ = "已添加 " + moduleId;
                 pushUndo();
@@ -615,7 +633,11 @@ public:
                 if (!host_->removeModuleFromChain(cmd.value("slot", -1), error)) {
                     return fail("移除失败: " + error);
                 }
-                resetChainLayout();
+                if (cmd.contains("visualTarget")) {
+                    clearChainLayout(cmd.value("visualTarget", -1));
+                } else {
+                    resetChainLayout();
+                }
                 dirty_ = true;
                 msg_ = "已移除槽位";
                 pushUndo();
@@ -1018,33 +1040,56 @@ public:
 private:
     void resetChainLayout()
     {
-        // layout holds ENGINE slot ids (-1 = empty visual slot); slot ids
-        // are unique even for repeated module instances, unlike module ids
-        chainLayout_.assign(12, -1);
+        // layout holds stable instance ids ("moduleId#n", n = occurrence of
+        // that module id in chain order); -1-free, "" = empty visual slot.
+        // Instance ids survive chain renumbering and repeated modules.
+        chainLayout_.assign(12, {});
+        std::map<std::string, int> counts;
         for (const auto& info : host_->chainInfo()) {
             if (info.slot >= 0 && info.slot < static_cast<int>(chainLayout_.size())) {
-                chainLayout_[static_cast<std::size_t>(info.slot)] = info.slot;
+                ++counts[info.moduleId];
+                chainLayout_[static_cast<std::size_t>(info.slot)] =
+                    info.moduleId + "#" + std::to_string(counts[info.moduleId]);
             }
         }
+    }
+
+    void placeChainLayout(int visualTarget, const std::string& instId)
+    {
+        if (visualTarget < 0 || visualTarget >= static_cast<int>(chainLayout_.size())
+            || instId.empty() || !chainLayout_[static_cast<std::size_t>(visualTarget)].empty()) {
+            resetChainLayout();
+            return;
+        }
+        chainLayout_[static_cast<std::size_t>(visualTarget)] = instId;
+    }
+
+    void clearChainLayout(int visualTarget)
+    {
+        if (visualTarget < 0 || visualTarget >= static_cast<int>(chainLayout_.size())) {
+            resetChainLayout();
+            return;
+        }
+        chainLayout_[static_cast<std::size_t>(visualTarget)].clear();
     }
 
     void moveChainLayout(int source, int target)
     {
         if (source < 0 || target < 0 || source >= static_cast<int>(chainLayout_.size())
             || target >= static_cast<int>(chainLayout_.size()) || source == target
-            || chainLayout_[source] < 0 || chainLayout_[target] >= 0) {
+            || chainLayout_[source].empty() || !chainLayout_[target].empty()) {
             resetChainLayout();
             return;
         }
-        chainLayout_[target] = chainLayout_[source];
-        chainLayout_[source] = -1;
+        chainLayout_[target] = std::move(chainLayout_[source]);
+        chainLayout_[source].clear();
     }
 
     void swapChainLayout(int source, int target)
     {
         if (source < 0 || target < 0 || source >= static_cast<int>(chainLayout_.size())
             || target >= static_cast<int>(chainLayout_.size()) || source == target
-            || chainLayout_[source] < 0 || chainLayout_[target] < 0) {
+            || chainLayout_[source].empty() || chainLayout_[target].empty()) {
             resetChainLayout();
             return;
         }
@@ -1434,7 +1479,7 @@ private:
 
     std::vector<PresetEntry> presets_[2]; // 0 = demo, 1 = user
     PresetEntry current_;
-    std::vector<int> chainLayout_ = std::vector<int>(12, -1);
+    std::vector<std::string> chainLayout_ = std::vector<std::string>(12);
     std::vector<ModelInfo> models_;
     std::vector<std::string> irs_;
     mutable std::vector<std::string> modelPaths_;

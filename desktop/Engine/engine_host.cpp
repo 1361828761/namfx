@@ -37,6 +37,23 @@ namespace {
 
 constexpr int kMaxChainSlots = 12;
 
+// NAM lazy init (EXECUTION.md known pitfall): NAM Core may allocate on its
+// first process call; run dummy blocks on the control thread before the
+// graph swap so the audio thread never allocates. ~100 ms is plenty.
+void prewarmChain(audio::Chain& chain, int blockSize)
+{
+    if (blockSize <= 0) {
+        return;
+    }
+    std::vector<float> inL(static_cast<std::size_t>(blockSize), 0.0f);
+    std::vector<float> inR(static_cast<std::size_t>(blockSize), 0.0f);
+    std::vector<float> outL(static_cast<std::size_t>(blockSize), 0.0f);
+    std::vector<float> outR(static_cast<std::size_t>(blockSize), 0.0f);
+    for (int i = 0; i < 40; ++i) {
+        chain.process(inL.data(), inR.data(), outL.data(), outR.data(), blockSize);
+    }
+}
+
 std::string readFileText(const std::string& path)
 {
     std::ifstream f(path, std::ios::binary);
@@ -197,6 +214,7 @@ bool EngineHost::loadPresetText(const std::string& jsonText, const std::string& 
     auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_, kMaxChainSlots);
     chain->prepare(sampleRate_, blockSize_);
     chain->startFadeIn(); // swap eases in from dry: no pop on preset load
+    prewarmChain(*chain, blockSize_);
     {
         // UI parameter writes target this chain directly (graph-swap
         // protocol: edits on the incoming chain, effective once the swap
@@ -350,6 +368,7 @@ bool EngineHost::rebuildChain(std::vector<audio::SlotDef> slots, std::string& er
         auto chain = std::make_unique<audio::Chain>(std::move(slots), registry_, kMaxChainSlots);
         chain->prepare(sampleRate_, blockSize_);
         chain->startFadeIn(); // the swap eases in: no pop
+        prewarmChain(*chain, blockSize_);
         chain_ = chain.get();
         midi_.setChain(*chain_);
         graph_.requestSwap(std::move(chain));

@@ -77,7 +77,7 @@ function defaultState() {
     presets: { demo: [], user: [] },
     currentPreset: null,        // {file, name, label, scope}
     chain: [],
-    chainLayout: Array(12).fill(-1),
+    chainLayout: Array(12).fill(''),
     dirty: false,
     // UI 态
     selectedSlot: -1,
@@ -300,9 +300,11 @@ class MockEngine {
           if (mod.asset !== 'none' && !args.asset) return { ok: false, error: '请先选择 ' + (mod.asset === 'nam' ? 'NAM 模型' : 'IR 文件') };
           const params = {};
           for (const spec of mod.specs) params[spec.id] = spec.def;
+          const instCount = s.chain.filter(c => c.module === mod.id).length + 1;
           const entry = {
             slot: s.chain.length,
             module: mod.id,
+            instId: mod.id + '#' + instCount,
             name: mod.name,
             category: NAMFX_CATALOG.engineCategory(mod.id),
             asset: args.asset || '',
@@ -316,7 +318,13 @@ class MockEngine {
             ? Math.min(Math.max(args.index, 0), s.chain.length) : s.chain.length;
           s.chain.splice(at, 0, entry);
           s.chain.forEach((c, i) => { c.slot = i; });
-          this._setLayoutFromChain();
+          if (args.visualTarget != null && args.visualTarget >= 0 && args.visualTarget < 12
+              && !s.chainLayout[args.visualTarget]) {
+            s.chainLayout[args.visualTarget] = entry.instId;
+            this._applyLayoutToChain();
+          } else {
+            this._setLayoutFromChain();
+          }
           s.selectedSlot = at;
           s.insertIndex = -1;
           s.pendingAsset = null;
@@ -331,7 +339,12 @@ class MockEngine {
           if (idx < 0) return { ok: false, error: '无此槽位' };
           s.chain.splice(idx, 1);
           s.chain.forEach((c, i) => { c.slot = i; });
-          this._setLayoutFromChain();
+          if (args.visualTarget != null && args.visualTarget >= 0 && args.visualTarget < 12) {
+            s.chainLayout[args.visualTarget] = '';
+            this._applyLayoutToChain();
+          } else {
+            this._setLayoutFromChain();
+          }
           s.selectedSlot = -1;
           s.dirty = true;
           s.msg = '已移除槽位 ' + (args.slot + 1);
@@ -359,9 +372,9 @@ class MockEngine {
           s.chain.splice(dst, 0, m);
           s.chain.forEach((c, i) => { c.slot = i; });
           if (args.visualSource != null && args.visualTarget != null
-              && s.chainLayout[args.visualSource] >= 0 && s.chainLayout[args.visualTarget] < 0) {
+              && s.chainLayout[args.visualSource] && !s.chainLayout[args.visualTarget]) {
             s.chainLayout[args.visualTarget] = s.chainLayout[args.visualSource];
-            s.chainLayout[args.visualSource] = -1;
+            s.chainLayout[args.visualSource] = '';
             this._applyLayoutToChain();
           } else {
             this._setLayoutFromChain();
@@ -544,19 +557,25 @@ class MockEngine {
 
   _setLayoutFromChain() {
     const s = Store.state;
-    s.chainLayout = Array(12).fill(-1);
+    s.chainLayout = Array(12).fill('');
+    const counts = {};
     s.chain.forEach((c, i) => {
+      counts[c.module] = (counts[c.module] || 0) + 1;
+      c.instId = c.module + '#' + counts[c.module];
       c.engineSlot = c.slot;
       c.uiSlot = i;
-      if (i < 12) s.chainLayout[i] = c.slot;
+      if (i < 12) s.chainLayout[i] = c.instId;
     });
   }
 
   _applyLayoutToChain() {
     const s = Store.state;
+    const counts = {};
     for (const c of s.chain) {
+      counts[c.module] = (counts[c.module] || 0) + 1;
+      c.instId = c.module + '#' + counts[c.module];
       c.engineSlot = c.slot;
-      const pos = s.chainLayout.indexOf(c.slot);
+      const pos = s.chainLayout.indexOf(c.instId);
       c.uiSlot = pos >= 0 ? pos : c.slot;
     }
   }
@@ -659,19 +678,26 @@ function normalizeState(prev, data) {
     if (c.asset == null) c.asset = '';
     c.engineSlot = c.slot;
   }
-  const engineSlots = (data.chain || []).map(c => c.slot);
+  // stable instance ids: "moduleId#n" in chain order (unique per instance,
+  // survives renumbering and repeated modules)
+  const counts = {};
+  const instIds = [];
+  for (const c of (data.chain || [])) {
+    counts[c.module] = (counts[c.module] || 0) + 1;
+    c.instId = c.module + '#' + counts[c.module];
+    instIds.push(c.instId);
+  }
   let layout = Array.isArray(data.chainLayout) && data.chainLayout.length === 12
-    ? data.chainLayout.slice(0, 12).map(v => (typeof v === 'number' && v >= 0 ? v : -1)) : [];
-  const layoutSlots = layout.filter(v => v >= 0);
-  if (layoutSlots.length !== engineSlots.length
-      || layoutSlots.some(s => !engineSlots.includes(s))) {
-    layout = Array(12).fill(-1);
-    engineSlots.forEach((slot, index) => { if (index < 12) layout[index] = slot; });
+    ? data.chainLayout.slice(0, 12) : [];
+  const layoutIds = layout.filter(Boolean);
+  if (layoutIds.length !== instIds.length || layoutIds.some(id => !instIds.includes(id))) {
+    layout = Array(12).fill('');
+    instIds.forEach((id, index) => { if (index < 12) layout[index] = id; });
   }
   data.chainLayout = layout;
   for (const c of (data.chain || [])) {
-    const uiSlot = layout.indexOf(c.slot);
-    c.uiSlot = uiSlot >= 0 ? uiSlot : c.engineSlot;
+    const uiSlot = layout.indexOf(c.instId);
+    c.uiSlot = uiSlot >= 0 ? uiSlot : c.slot;
   }
   if (!data.library) data.library = { models: [], irs: [] };
   if (!data.presets) data.presets = { demo: [], user: [] };
