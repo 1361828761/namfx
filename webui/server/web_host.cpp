@@ -1005,6 +1005,9 @@ public:
         if (ticker_.joinable()) {
             ticker_.join();
         }
+        if (pump_.joinable()) {
+            pump_.join();
+        }
     }
 
     // ---- accessors ----
@@ -1707,6 +1710,21 @@ void webHostDestroy(WebHost* host)
 
 // ---------- standalone main ----------
 
+#ifdef _WIN32
+namespace {
+volatile LONG g_exiting = 0;
+
+BOOL WINAPI consoleCtrlHandler(DWORD type)
+{
+    if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT || type == CTRL_CLOSE_EVENT) {
+        InterlockedExchange(&g_exiting, 1);
+        return TRUE;
+    }
+    return FALSE;
+}
+} // namespace
+#endif
+
 int run(int argc, char** argv)
 {
     std::string wwwDir = NAMFX_WEBUI_DIR;
@@ -1739,16 +1757,38 @@ int run(int argc, char** argv)
 
     EngineHost engine;
     engine.prepare(48000.0, 128);
+    std::fprintf(stderr, "[namfx] engine ready\n");
     desktop::NativeAudioBackend audio(engine);
     std::string audioError;
-    audio.initialize(audioError);
     WebHost host(&engine, std::move(wwwDir), std::move(demoDir), &audio);
+    std::fprintf(stderr, "[namfx] webhost ready\n");
 
     HttpServer server(makeHandler(host));
+    std::fprintf(stderr, "[namfx] starting http server...\n");
 
     if (!server.start(bindAddr, port)) {
         std::fprintf(stderr, "cannot listen on %s:%d\n", bindAddr.c_str(), port);
         return 1;
+    }
+    std::fprintf(stderr, "[namfx] http server up\n");
+
+    // the audio backend initializes on a background thread: a wedged
+    // driver (e.g. ASIO4ALL after a system audio restart) must never
+    // block the control plane; we give it 8 s then run device-less
+    std::atomic<bool> audioInitDone{false};
+    std::thread audioThread([&audio, &audioError, &audioInitDone] {
+        audio.initialize(audioError);
+        audioInitDone.store(true, std::memory_order_release);
+    });
+    const auto initDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+    while (!audioInitDone.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < initDeadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    if (audioInitDone.load(std::memory_order_acquire)) {
+        std::fprintf(stderr, "[namfx] audio backend done (%s)\n", audioError.c_str());
+    } else {
+        std::fprintf(stderr, "[namfx] audio backend init timed out - running device-less\n");
     }
     std::printf("NAMFX WebUI host: http://%s:%d  (www=%s, demo=%s)\n",
                 bindAddr.c_str(), port, host.wwwDir().c_str(), host.demoDir().c_str());
@@ -1766,13 +1806,17 @@ int run(int argc, char** argv)
             if (midiInOpen(&h, i, reinterpret_cast<DWORD_PTR>(&midiInputProc),
                            reinterpret_cast<DWORD_PTR>(&hp), CALLBACK_FUNCTION) == MMSYSERR_NOERROR) {
                 midiInStart(h);
-                std::this_thread::sleep_for(std::chrono::hours(24));
+                while (InterlockedCompareExchange(&g_exiting, 0, 0) == 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
                 midiInClose(h);
                 return;
             }
         }
     });
     midiThread.detach();
+
+    SetConsoleCtrlHandler(&consoleCtrlHandler, TRUE);
 #endif
 
     if (!host.hasAudioBackend()) {
@@ -1780,10 +1824,26 @@ int run(int argc, char** argv)
     }
     host.startTicker();
     std::printf("press Ctrl+C to stop\n");
-    // control-plane host: run forever; Ctrl+C terminates the process
+    // graceful shutdown on Ctrl+C: stop every worker before the stack
+    // unwinds so the ASIO device is released cleanly (a forced kill can
+    // leave the audio stack wedged system-wide)
+#ifdef _WIN32
+    while (InterlockedCompareExchange(&g_exiting, 0, 0) == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+#else
     for (;;) {
         std::this_thread::sleep_for(std::chrono::hours(1));
     }
+#endif
+    host.stopTicker();
+    webHostStopClients(host);
+    server.stop();
+    if (audioThread.joinable()) {
+        audioThread.detach(); // may be wedged in a driver call; OS cleans up
+    }
+    std::printf("stopped\n");
+    return 0;
 }
 
 #endif // NAMFX_WEB_EMBEDDED

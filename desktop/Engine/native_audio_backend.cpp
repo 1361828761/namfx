@@ -75,7 +75,12 @@ bool NativeAudioBackend::initialize(std::string& error)
 
 void NativeAudioBackend::shutdown()
 {
-    std::lock_guard<std::mutex> lock(mu_);
+    // the init thread may be wedged in a driver call (ASIO4ALL after a
+    // system audio restart); never block process exit on it
+    std::unique_lock<std::mutex> lock(mu_, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        return;
+    }
     pendingUnmute_ = 0;
     if (!initialized_) {
         return;
@@ -93,7 +98,12 @@ web::AudioBackendState NativeAudioBackend::state() const
     // interface is const. All state is mutex-guarded, so the const_cast
     // is safe and only undoes interface constness.
     auto* self = const_cast<NativeAudioBackend*>(this);
-    std::lock_guard<std::mutex> lock(self->mu_);
+    std::unique_lock<std::mutex> lock(self->mu_, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        // init thread wedged in a driver call: report as inactive instead
+        // of blocking the control plane
+        return web::AudioBackendState{};
+    }
     self->applyPendingUnmuteLocked();
     web::AudioBackendState out;
     self->refreshStateLocked(out);
@@ -127,7 +137,11 @@ void NativeAudioBackend::refreshStateLocked(web::AudioBackendState& out)
 bool NativeAudioBackend::apply(const std::string& type, const std::string& device,
                                double sampleRate, int blockSize, std::string& error)
 {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        error = "音频后端初始化中（驱动无响应），请稍后重试";
+        return false;
+    }
     if (!initialized_) {
         error = "音频后端未初始化";
         return false;
@@ -159,7 +173,10 @@ bool NativeAudioBackend::apply(const std::string& type, const std::string& devic
 
 void NativeAudioBackend::tick()
 {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::unique_lock<std::mutex> lock(mu_, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        return;
+    }
     applyPendingUnmuteLocked();
 }
 

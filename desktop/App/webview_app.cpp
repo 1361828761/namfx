@@ -113,9 +113,6 @@ public:
 
     void initialise(const juce::String&) override
     {
-        std::string audioError;
-        audio_.initialize(audioError);
-
         startHttpServer();
         if (server_ == nullptr) {
             juce::AlertWindow::showMessageBoxAsync(juce::AlertWindow::WarningIcon,
@@ -126,6 +123,14 @@ public:
         }
 
         window_ = std::make_unique<MainShellWindow>(httpPort_);
+
+        // audio initializes on a background thread: a wedged driver
+        // (e.g. ASIO4ALL after a system audio restart) must never block
+        // the UI; the settings page reports the backend as not ready
+        std::thread([this] {
+            std::string audioError;
+            audio_.initialize(audioError);
+        }).detach();
     }
 
     void shutdown() override
